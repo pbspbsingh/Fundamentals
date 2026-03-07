@@ -1579,6 +1579,7 @@ dependencies = [
  "chrono",
  "config",
  "model",
+ "serde_json",
  "tokio",
  "tracing",
 ]

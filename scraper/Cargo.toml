@@ -13,4 +13,5 @@ tokio = { workspace = true }
 
 config = { path = "../config" }
 model = { path = "../model" }
+serde_json = { workspace = true }
 
