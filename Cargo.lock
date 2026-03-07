@@ -1036,6 +1036,7 @@ name = "model"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "serde",
 ]
 
 [[package]]
@@ -1578,6 +1579,8 @@ dependencies = [
  "chrono",
  "config",
  "model",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

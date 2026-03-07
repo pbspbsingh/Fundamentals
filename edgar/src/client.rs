@@ -1,6 +1,6 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{bail, Context};
+use anyhow::{Context, bail};
 use serde::de::DeserializeOwned;
 use tokio::time::sleep;
 
@@ -41,10 +41,7 @@ impl EdgarClient {
                             .and_then(|s| s.parse::<u64>().ok())
                     })
                     .context("missing cik_str")?;
-                let company_name = entry["title"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let company_name = entry["title"].as_str().unwrap_or("").to_string();
                 let cik = format!("CIK{cik_num:010}");
                 return Ok((cik, company_name));
             }
@@ -54,10 +51,7 @@ impl EdgarClient {
     }
 
     /// Fetch `{BASE_URL}/api/xbrl/companyfacts/{cik}.json`
-    pub async fn fetch_company_facts(
-        &self,
-        cik: &str,
-    ) -> anyhow::Result<serde_json::Value> {
+    pub async fn fetch_company_facts(&self, cik: &str) -> anyhow::Result<serde_json::Value> {
         let url = format!("{BASE_URL}/api/xbrl/companyfacts/{cik}.json");
         self.get_json(&url)
             .await
@@ -65,10 +59,7 @@ impl EdgarClient {
     }
 
     /// Fetch `{BASE_URL}/submissions/{cik}.json`
-    pub async fn fetch_submissions(
-        &self,
-        cik: &str,
-    ) -> anyhow::Result<serde_json::Value> {
+    pub async fn fetch_submissions(&self, cik: &str) -> anyhow::Result<serde_json::Value> {
         let url = format!("{BASE_URL}/submissions/{cik}.json");
         self.get_json(&url)
             .await
@@ -119,8 +110,7 @@ impl EdgarClient {
                 .unwrap_or(u64::MAX);
 
             if age < CACHE_MAX_AGE_SECS {
-                let bytes = std::fs::read(&cache_path)
-                    .context("reading company_tickers cache")?;
+                let bytes = std::fs::read(&cache_path).context("reading company_tickers cache")?;
                 return serde_json::from_slice(&bytes)
                     .context("parsing cached company_tickers.json");
             }
@@ -151,6 +141,8 @@ impl EdgarClient {
         if !resp.status().is_success() {
             bail!("HTTP {} for {url}", resp.status());
         }
-        resp.json::<T>().await.with_context(|| format!("decoding JSON from {url}"))
+        resp.json::<T>()
+            .await
+            .with_context(|| format!("decoding JSON from {url}"))
     }
 }

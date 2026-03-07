@@ -61,8 +61,7 @@ fn merge_concepts(
     unit: &str,
     forms: &[&str],
 ) -> Vec<Fact> {
-    let mut map: std::collections::HashMap<NaiveDate, Fact> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<NaiveDate, Fact> = std::collections::HashMap::new();
     for concept in concepts {
         for fact in extract_facts(facts, concept, unit, forms) {
             map.entry(fact.end).or_insert(fact);
@@ -90,8 +89,7 @@ fn extract_facts(
     };
 
     // Collect, filter to desired forms, deduplicate by `end` keeping latest accn
-    let mut map: std::collections::HashMap<NaiveDate, Fact> =
-        std::collections::HashMap::new();
+    let mut map: std::collections::HashMap<NaiveDate, Fact> = std::collections::HashMap::new();
 
     for entry in arr {
         let form = entry["form"].as_str().unwrap_or("");
@@ -167,7 +165,13 @@ fn extract_facts(
 
         // Keep the entry with the lexicographically greater accession number (more recent)
         if accn > existing.accn {
-            *existing = Fact { end, fy, fp, val, accn };
+            *existing = Fact {
+                end,
+                fy,
+                fp,
+                val,
+                accn,
+            };
         }
     }
 
@@ -188,8 +192,7 @@ pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
         .trim_end_matches("</XML>")
         .trim();
 
-    let doc = roxmltree::Document::parse(xml_body)
-        .context("parsing Form 4 XML")?;
+    let doc = roxmltree::Document::parse(xml_body).context("parsing Form 4 XML")?;
 
     let root = doc.root_element();
 

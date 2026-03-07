@@ -3,8 +3,8 @@
 use chrono::{Datelike, NaiveDate};
 
 use crate::types::{
-    BalanceSheetHistory, CashFlowHistory, EarningsHistory, MarginHistory, RevenueHistory,
-    ReturnOnEquityHistory, SharesHistory,
+    BalanceSheetHistory, CashFlowHistory, EarningsHistory, MarginHistory, ReturnOnEquityHistory,
+    RevenueHistory, SharesHistory,
 };
 
 /// Compute EPS YoY growth, QoQ growth, and acceleration in-place.
@@ -109,10 +109,7 @@ pub fn compute_balance_sheet(bs: &mut Vec<BalanceSheetHistory>) {
 /// Compute ROE in-place.
 /// Expects `roe` and `balance_sheet` both sorted ascending.
 /// avg_equity = (equity at year_end + equity at prior year_end) / 2.
-pub fn compute_roe(
-    roe: &mut Vec<ReturnOnEquityHistory>,
-    balance_sheet: &[BalanceSheetHistory],
-) {
+pub fn compute_roe(roe: &mut Vec<ReturnOnEquityHistory>, balance_sheet: &[BalanceSheetHistory]) {
     for r in roe.iter_mut() {
         // Find equity entries closest to this and prior fiscal year end
         let eq_now = nearest_equity(balance_sheet, r.period_of_report);
@@ -149,10 +146,8 @@ fn find_yoy_index(dates: &[NaiveDate], current: NaiveDate) -> Option<usize> {
 
 fn nearest_equity(bs: &[BalanceSheetHistory], target: NaiveDate) -> Option<i64> {
     bs.iter()
-        .min_by_key(|b| {
-            let d = (b.period_of_report - target).num_days().abs();
-            d
-        })
+        .filter(|b| (b.period_of_report - target).num_days().abs() <= 120)
+        .min_by_key(|b| (b.period_of_report - target).num_days().abs())
         .and_then(|b| b.stockholders_equity)
 }
 

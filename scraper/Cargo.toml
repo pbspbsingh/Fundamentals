@@ -8,6 +8,9 @@ anyhow = { workspace = true }
 
 chrome_driver = { path = "../../ChromeDriver" }
 chrono = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
 
 config = { path = "../config" }
 model = { path = "../model" }
+

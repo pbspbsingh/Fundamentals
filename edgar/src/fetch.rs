@@ -33,7 +33,11 @@ pub async fn fetch_fundamentals(
     let net_income_facts = parse::extract_quarterly(
         facts,
         // ProfitLoss is used by some companies instead of NetIncomeLoss (e.g. MNST)
-        &["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"],
+        &[
+            "NetIncomeLoss",
+            "ProfitLoss",
+            "NetIncomeLossAvailableToCommonStockholdersBasic",
+        ],
     );
     let diluted_shares_facts = parse::extract_quarterly_shares(
         facts,
@@ -60,10 +64,8 @@ pub async fn fetch_fundamentals(
 
     // ── Margins ───────────────────────────────────────────────────────────────
     let gross_profit_facts = parse::extract_quarterly(facts, &["GrossProfit"]);
-    let cogs_facts = parse::extract_quarterly(
-        facts,
-        &["CostOfGoodsAndServicesSold", "CostOfRevenue"],
-    );
+    let cogs_facts =
+        parse::extract_quarterly(facts, &["CostOfGoodsAndServicesSold", "CostOfRevenue"]);
     let op_income_facts = parse::extract_quarterly(facts, &["OperatingIncomeLoss"]);
 
     // ── Cash Flow (annual) ────────────────────────────────────────────────────
@@ -75,25 +77,17 @@ pub async fn fetch_fundamentals(
             "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
         ],
     );
-    let capex_facts = parse::extract_annual(
-        facts,
-        &["PaymentsToAcquirePropertyPlantAndEquipment"],
-    );
+    let capex_facts = parse::extract_annual(facts, &["PaymentsToAcquirePropertyPlantAndEquipment"]);
 
     // ── Shares ────────────────────────────────────────────────────────────────
     let shares_outstanding_facts =
         parse::extract_quarterly_shares(facts, &["CommonStockSharesOutstanding"]);
 
     // ── Balance Sheet ─────────────────────────────────────────────────────────
-    let cash_facts = parse::extract_quarterly(
-        facts,
-        &["CashAndCashEquivalentsAtCarryingValue"],
-    );
+    let cash_facts = parse::extract_quarterly(facts, &["CashAndCashEquivalentsAtCarryingValue"]);
     let lt_debt_facts = parse::extract_quarterly(facts, &["LongTermDebt"]);
-    let st_debt_facts = parse::extract_quarterly(
-        facts,
-        &["ShortTermBorrowings", "LongTermDebtCurrent"],
-    );
+    let st_debt_facts =
+        parse::extract_quarterly(facts, &["ShortTermBorrowings", "LongTermDebtCurrent"]);
     let equity_facts = parse::extract_quarterly(facts, &["StockholdersEquity"]);
 
     // ── Assemble typed structs ────────────────────────────────────────────────
@@ -122,8 +116,7 @@ pub async fn fetch_fundamentals(
     let mut cash_flows = build_cash_flows(&ocf_facts, &capex_facts, 4);
     compute::compute_cash_flows(&mut cash_flows);
 
-    let mut shares =
-        build_shares(&shares_outstanding_facts, &diluted_shares_facts, 12);
+    let mut shares = build_shares(&shares_outstanding_facts, &diluted_shares_facts, 12);
     compute::compute_shares_change(&mut shares);
 
     let mut balance_sheet = build_balance_sheet(
@@ -250,8 +243,7 @@ fn build_margins(
 }
 
 fn build_cash_flows(ocf: &[Fact], capex: &[Fact], limit: usize) -> Vec<CashFlowHistory> {
-    let mut dates: Vec<NaiveDate> =
-        ocf.iter().chain(capex.iter()).map(|f| f.end).collect();
+    let mut dates: Vec<NaiveDate> = ocf.iter().chain(capex.iter()).map(|f| f.end).collect();
     dates.sort();
     dates.dedup();
     let dates = tail(&dates, limit);
@@ -268,11 +260,7 @@ fn build_cash_flows(ocf: &[Fact], capex: &[Fact], limit: usize) -> Vec<CashFlowH
         .collect()
 }
 
-fn build_shares(
-    outstanding: &[Fact],
-    diluted: &[Fact],
-    limit: usize,
-) -> Vec<SharesHistory> {
+fn build_shares(outstanding: &[Fact], diluted: &[Fact], limit: usize) -> Vec<SharesHistory> {
     let mut dates: Vec<NaiveDate> = outstanding
         .iter()
         .chain(diluted.iter())
@@ -300,11 +288,7 @@ fn build_balance_sheet(
     equity: &[Fact],
     limit: usize,
 ) -> Vec<BalanceSheetHistory> {
-    let mut dates: Vec<NaiveDate> = cash
-        .iter()
-        .chain(equity.iter())
-        .map(|f| f.end)
-        .collect();
+    let mut dates: Vec<NaiveDate> = cash.iter().chain(equity.iter()).map(|f| f.end).collect();
     dates.sort();
     dates.dedup();
     let dates = tail(&dates, limit);
@@ -323,11 +307,7 @@ fn build_balance_sheet(
         .collect()
 }
 
-fn build_roe(
-    net_income: &[Fact],
-    _equity: &[Fact],
-    limit: usize,
-) -> Vec<ReturnOnEquityHistory> {
+fn build_roe(net_income: &[Fact], _equity: &[Fact], limit: usize) -> Vec<ReturnOnEquityHistory> {
     // Use annual net income dates as anchors
     let mut annual_ni: Vec<Fact> = {
         // Sum 4 quarters of net income per fiscal year as TTM proxy
@@ -359,22 +339,26 @@ fn build_roe(
 
 /// Sum the most recent 4 quarterly values ending on or before `end`.
 fn sum_ttm(facts: &[Fact], end: NaiveDate) -> Option<i64> {
-    let mut relevant: Vec<&Fact> = facts
-        .iter()
-        .filter(|f| f.end <= end)
-        .collect();
+    let mut relevant: Vec<&Fact> = facts.iter().filter(|f| f.end <= end).collect();
     relevant.sort_by_key(|f| f.end);
-    let last4: Vec<i64> = relevant
-        .iter()
-        .rev()
-        .take(4)
-        .filter_map(|f| Some(f.val as i64))
-        .collect();
-    if last4.len() == 4 {
-        Some(last4.iter().sum())
-    } else {
-        None
+
+    // Take the 4 most recent entries
+    let last4: Vec<&Fact> = relevant.iter().rev().take(4).copied().collect();
+
+    if last4.len() < 4 {
+        return None;
     }
+
+    // Validate that all 4 quarters are consecutive — no gap > 120 days between
+    // adjacent entries. last4 is in reverse chronological order.
+    for i in 0..last4.len() - 1 {
+        let gap = (last4[i].end - last4[i + 1].end).num_days().abs();
+        if gap > 120 {
+            return None;
+        }
+    }
+
+    Some(last4.iter().map(|f| f.val as i64).sum())
 }
 
 // ── Insider transactions ──────────────────────────────────────────────────────
