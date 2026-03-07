@@ -1,0 +1,6 @@
+chrome_path = "/usr/bin/google-chrome"
+user_data_dir = "/home/pbs/Workspace/ChromeData"
+chrome_args = []
+launch_if_needed = true
+
+rust_log="info,runner=debug"
