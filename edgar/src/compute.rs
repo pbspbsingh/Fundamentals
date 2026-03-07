@@ -1,6 +1,6 @@
 //! Derived field calculations applied after raw data is collected and sorted.
 
-use chrono::Datelike;
+use chrono::{Datelike, NaiveDate};
 
 use crate::types::{
     BalanceSheetHistory, CashFlowHistory, EarningsHistory, MarginHistory, RevenueHistory,
@@ -18,30 +18,19 @@ pub fn compute_earnings_growth(earnings: &mut Vec<EarningsHistory>) {
                 _ => None,
             };
         }
-        if e.eps_basic.is_none() {
-            e.eps_basic = e.eps_diluted; // use diluted as proxy when basic is missing
-        }
     }
 
     let n = earnings.len();
-    // Snapshot for lookups (avoid borrow issues)
-    let snap: Vec<(u16, u8, Option<f64>)> = earnings
-        .iter()
-        .map(|e| (e.fiscal_year, e.fiscal_quarter, e.eps_diluted))
-        .collect();
+    let dates: Vec<NaiveDate> = earnings.iter().map(|e| e.period_of_report).collect();
+    let eps_vals: Vec<Option<f64>> = earnings.iter().map(|e| e.eps_diluted).collect();
 
     for i in 0..n {
-        let (fy, fq, cur_eps) = snap[i];
-        // YoY: find same fiscal_quarter from prior fiscal_year
-        let yoy_eps = snap[..i]
-            .iter()
-            .rev()
-            .find(|(y, q, _)| *y == fy.wrapping_sub(1) && *q == fq)
-            .and_then(|(_, _, v)| *v);
-        earnings[i].eps_yoy_growth = yoy_growth(cur_eps, yoy_eps);
-        // QoQ: immediately prior entry
+        let yoy_eps = find_yoy_index(&dates, dates[i])
+            .filter(|&j| j != i)
+            .and_then(|j| eps_vals[j]);
+        earnings[i].eps_yoy_growth = yoy_growth(eps_vals[i], yoy_eps);
         earnings[i].eps_qoq_growth =
-            pct_change(cur_eps, if i >= 1 { snap[i - 1].2 } else { None });
+            pct_change(eps_vals[i], if i >= 1 { eps_vals[i - 1] } else { None });
     }
     // Second pass: acceleration = YoY[i] - YoY[i-1]
     let yoy: Vec<Option<f64>> = earnings.iter().map(|e| e.eps_yoy_growth).collect();
@@ -57,21 +46,16 @@ pub fn compute_earnings_growth(earnings: &mut Vec<EarningsHistory>) {
 /// Expects ascending order.
 pub fn compute_revenue_growth(revenue: &mut Vec<RevenueHistory>) {
     let n = revenue.len();
-    let snap: Vec<(u16, u8, Option<i64>)> = revenue
-        .iter()
-        .map(|r| (r.fiscal_year, r.fiscal_quarter, r.revenue))
-        .collect();
+    let dates: Vec<NaiveDate> = revenue.iter().map(|r| r.period_of_report).collect();
+    let rev_vals: Vec<Option<i64>> = revenue.iter().map(|r| r.revenue).collect();
 
     for i in 0..n {
-        let (fy, fq, cur) = snap[i];
-        let yoy_val = snap[..i]
-            .iter()
-            .rev()
-            .find(|(y, q, _)| *y == fy.wrapping_sub(1) && *q == fq)
-            .and_then(|(_, _, v)| *v);
-        revenue[i].revenue_yoy_growth = yoy_growth_i64(cur, yoy_val);
+        let yoy_val = find_yoy_index(&dates, dates[i])
+            .filter(|&j| j != i)
+            .and_then(|j| rev_vals[j]);
+        revenue[i].revenue_yoy_growth = yoy_growth_i64(rev_vals[i], yoy_val);
         revenue[i].revenue_qoq_growth =
-            pct_change_i64(cur, if i >= 1 { snap[i - 1].2 } else { None });
+            pct_change_i64(rev_vals[i], if i >= 1 { rev_vals[i - 1] } else { None });
     }
 }
 
@@ -89,7 +73,7 @@ pub fn compute_margins(margins: &mut Vec<MarginHistory>) {
 pub fn compute_cash_flows(cash_flows: &mut Vec<CashFlowHistory>) {
     for cf in cash_flows.iter_mut() {
         cf.free_cash_flow = match (cf.operating_cash_flow, cf.capex) {
-            (Some(ocf), Some(capex)) => Some(ocf - capex),
+            (Some(ocf), Some(capex)) => Some(ocf - capex.abs()),
             (Some(ocf), None) => Some(ocf),
             _ => None,
         };
@@ -153,7 +137,17 @@ pub fn compute_roe(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-fn nearest_equity(bs: &[BalanceSheetHistory], target: chrono::NaiveDate) -> Option<i64> {
+fn find_yoy_index(dates: &[NaiveDate], current: NaiveDate) -> Option<usize> {
+    let target = current - chrono::Duration::days(365);
+    dates
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| (**d - target).num_days().abs() <= 30)
+        .min_by_key(|(_, d)| (**d - target).num_days().abs())
+        .map(|(i, _)| i)
+}
+
+fn nearest_equity(bs: &[BalanceSheetHistory], target: NaiveDate) -> Option<i64> {
     bs.iter()
         .min_by_key(|b| {
             let d = (b.period_of_report - target).num_days().abs();

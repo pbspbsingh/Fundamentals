@@ -22,17 +22,26 @@ pub async fn fetch_fundamentals(
     let facts = &facts_json["facts"];
 
     // ── Earnings ─────────────────────────────────────────────────────────────
-    let eps_diluted_facts =
-        parse::extract_quarterly_eps(facts, &["EarningsPerShareDiluted"]);
-    let eps_basic_facts =
-        parse::extract_quarterly_eps(facts, &["EarningsPerShareBasic"]);
+    let eps_diluted_facts = parse::extract_quarterly_eps(
+        facts,
+        &["EarningsPerShareDiluted", "EarningsPerShareBasicAndDiluted"],
+    );
+    let eps_basic_facts = parse::extract_quarterly_eps(
+        facts,
+        &["EarningsPerShareBasic", "EarningsPerShareBasicAndDiluted"],
+    );
     let net_income_facts = parse::extract_quarterly(
         facts,
-        &["NetIncomeLoss"],
+        // ProfitLoss is used by some companies instead of NetIncomeLoss (e.g. MNST)
+        &["NetIncomeLoss", "ProfitLoss", "NetIncomeLossAvailableToCommonStockholdersBasic"],
     );
     let diluted_shares_facts = parse::extract_quarterly_shares(
         facts,
-        &["WeightedAverageNumberOfDilutedSharesOutstanding"],
+        &[
+            "WeightedAverageNumberOfDilutedSharesOutstanding",
+            // Used by companies where basic = diluted (e.g. BKR)
+            "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+        ],
     );
 
     // ── Revenue ───────────────────────────────────────────────────────────────
@@ -41,7 +50,11 @@ pub async fn fetch_fundamentals(
         &[
             "Revenues",
             "RevenueFromContractWithCustomerExcludingAssessedTax",
+            // Used by some companies (e.g. CRWD, ODFL, KHC)
+            "RevenueFromContractWithCustomerIncludingAssessedTax",
             "SalesRevenueNet",
+            "SalesRevenueGoodsNet",    // e.g. MNST
+            "SalesRevenueServicesNet", // e.g. ODFL
         ],
     );
 
@@ -56,7 +69,11 @@ pub async fn fetch_fundamentals(
     // ── Cash Flow (annual) ────────────────────────────────────────────────────
     let ocf_facts = parse::extract_annual(
         facts,
-        &["NetCashProvidedByUsedInOperatingActivities"],
+        &[
+            "NetCashProvidedByUsedInOperatingActivities",
+            // Used by some companies (e.g. GEHC, spun-off entities)
+            "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+        ],
     );
     let capex_facts = parse::extract_annual(
         facts,
@@ -245,7 +262,7 @@ fn build_cash_flows(ocf: &[Fact], capex: &[Fact], limit: usize) -> Vec<CashFlowH
             period_of_report: d,
             fiscal_year: d.year() as u16,
             operating_cash_flow: val_for_i64(ocf, d),
-            capex: val_for_i64(capex, d),
+            capex: val_for_i64(capex, d).map(|v| v.abs()),
             free_cash_flow: None,
         })
         .collect()

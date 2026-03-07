@@ -42,8 +42,10 @@ pub fn extract_annual(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact>
 }
 
 /// Extract quarterly share-count facts (unit = "shares"), merging fallback concepts.
+/// 10-K annual entries (full-year weighted average) are excluded to keep the vec
+/// purely quarterly so QoQ diffs are meaningful.
 pub fn extract_quarterly_shares(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact> {
-    merge_concepts(facts, concepts, "shares", &["10-Q", "10-K"])
+    merge_concepts(facts, concepts, "shares", &["10-Q"])
 }
 
 /// Extract quarterly EPS facts (unit = "USD/shares"), merging fallback concepts.
@@ -75,8 +77,12 @@ fn extract_facts(
     unit: &str,
     forms: &[&str],
 ) -> Vec<Fact> {
+    // JSON Pointer (RFC 6901) uses '/' as a separator and '~1' to represent a
+    // literal '/'.  The EDGAR unit "USD/shares" contains a slash, so we must
+    // escape it before embedding it in the pointer string.
+    let unit_esc = unit.replace('/', "~1");
     let entries = facts
-        .pointer(&format!("/us-gaap/{concept}/units/{unit}"))
+        .pointer(&format!("/us-gaap/{concept}/units/{unit_esc}"))
         .and_then(|v| v.as_array());
 
     let Some(arr) = entries else {
