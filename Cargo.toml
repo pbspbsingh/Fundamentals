@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["runner", "config", "scraper", "model"]
+members = ["runner", "config", "scraper", "model", "edgar"]
 
 [workspace.package]
 edition = "2024"
@@ -14,3 +14,13 @@ serde = { version = "1", features = ["derive"] }
 tracing = "0.1"
 
 tokio = {version = "1.5", features = ["full"]}
+chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde_json = "1"
+
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

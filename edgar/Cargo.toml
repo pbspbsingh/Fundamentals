@@ -1,0 +1,16 @@
+[package]
+name = "edgar"
+version = "0.1.0"
+edition.workspace = true
+
+[dependencies]
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+quick-xml = { version = "0.39", features = ["serialize"] }
+roxmltree = "0.21"
+
+reqwest = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true }
+

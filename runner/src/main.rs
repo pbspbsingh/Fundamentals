@@ -1,4 +1,3 @@
-use model::Ticker;
 use time::macros::format_description;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -21,8 +20,13 @@ fn main() -> anyhow::Result<()> {
 async fn async_main() -> anyhow::Result<()> {
     info!("Starting the app with config:\n{:#?}", config::config());
 
-
-    scraper::start_fetching(&Ticker::new("NASDAQ", "TSLA")).await?;
+    for ticker in ["AAPL", "TSLA", "NVDA", "GOOG", "META"] {
+        info!("Fetching {ticker}...");
+        match edgar::fetch_fundamentals(ticker).await {
+            Ok(f) => println!("{f:#?}"),
+            Err(e) => eprintln!("ERROR [{ticker}]: {e:#}"),
+        }
+    }
 
     Ok(())
 }
