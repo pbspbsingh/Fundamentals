@@ -1,4 +1,5 @@
 pub mod financials;
+pub mod sentiment;
 
 use std::fmt::{Display, Formatter};
 

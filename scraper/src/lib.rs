@@ -1,8 +1,11 @@
 mod financial_scraper;
+mod sentiment_scraper;
 
 use anyhow::Context;
 use chrome_driver::{Browser, ChromeDriverConfig};
+
 pub use financial_scraper::FinancialScraper;
+pub use sentiment_scraper::SentimentScraper;
 
 pub const TV_HOME: &str = "https://www.tradingview.com";
 
