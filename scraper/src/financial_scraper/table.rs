@@ -1,7 +1,8 @@
 use anyhow::Context;
 use chrono::{Local, NaiveDate};
 use model::financials::{
-    BalanceSheetEntry, CashFlowEntry, IncomeStatementEntry, Period, Periodicity, StatisticsEntry,
+    BalanceSheetEntry, CashFlowEntry, EarningsEntry, IncomeStatementEntry, Period, Periodicity,
+    StatisticsEntry,
 };
 
 use super::utils::{parse_month_year, parse_pct, parse_value, round3};
@@ -84,5 +85,8 @@ impl HasPeriodEnd for CashFlowEntry {
     fn period_end(&self) -> NaiveDate { self.period.period_end }
 }
 impl HasPeriodEnd for StatisticsEntry {
+    fn period_end(&self) -> NaiveDate { self.period.period_end }
+}
+impl HasPeriodEnd for EarningsEntry {
     fn period_end(&self) -> NaiveDate { self.period.period_end }
 }

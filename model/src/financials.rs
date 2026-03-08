@@ -158,6 +158,26 @@ pub struct StatisticsEntry {
     pub capex_per_share: Option<f64>,
 }
 
+// ── Earnings ──────────────────────────────────────────────────────────────────
+
+/// One column from the Earnings tab (EPS + Revenue combined).
+/// `period_end` is the last day of the fiscal quarter/year derived from the
+/// TradingView label (e.g. "Q1 '21" → 2021-03-31, "FY '21" → 2021-12-31).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EarningsEntry {
+    pub period: Period,
+
+    pub eps_reported: Option<f64>,
+    pub eps_estimate: Option<f64>,
+    #[serde(with = "pct_serde")]
+    pub eps_surprise: Option<f64>,
+
+    pub revenue_reported: Option<f64>,
+    pub revenue_estimate: Option<f64>,
+    #[serde(with = "pct_serde")]
+    pub revenue_surprise: Option<f64>,
+}
+
 // ── Top-level ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -179,6 +199,9 @@ pub struct TradingViewFinancials {
 
     pub quarterly_statistics: Vec<StatisticsEntry>,
     pub annual_statistics: Vec<StatisticsEntry>,
+
+    pub quarterly_earnings: Vec<EarningsEntry>,
+    pub annual_earnings: Vec<EarningsEntry>,
 }
 
 // ── Percentage serde ───────────────────────────────────────────────────────────

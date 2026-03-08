@@ -117,6 +117,16 @@ impl FinancialScraper {
         self.switch_tab(false).await?;
         let annual_statistics = self.parse_statistics(false).await?;
 
+        info!("\nFetching Earnings...");
+        self.page()
+            .find_element("a#earnings")
+            .await?
+            .click()
+            .await?;
+        self.page().sleep().await;
+        let quarterly_earnings = self.parse_earnings(true).await?;
+        let annual_earnings = self.parse_earnings(false).await?;
+
         Ok(TradingViewFinancials {
             ticker: ticker.ticker.clone(),
             currency,
@@ -135,6 +145,9 @@ impl FinancialScraper {
 
             quarterly_statistics,
             annual_statistics,
+
+            quarterly_earnings,
+            annual_earnings,
         })
     }
 
@@ -228,6 +241,80 @@ impl FinancialScraper {
             format!(
                 "JS table extractor returned a value that could not be deserialized; \
                  raw CDP value: {raw:?}"
+            )
+        })
+    }
+
+    /// Switch both the EPS and Revenue earnings tabs simultaneously.
+    /// The earnings page renders two independent tab bars both using id="FY"/"FQ",
+    /// so we click them all via JS to avoid partial state.
+    pub(super) async fn switch_earnings_tab(&self, to_quarterly: bool) -> anyhow::Result<()> {
+        let id = if to_quarterly { "FQ" } else { "FY" };
+        info!(
+            "Switching earnings tabs to {}",
+            if to_quarterly { "Quarterly" } else { "Annual" }
+        );
+        self.page()
+            .evaluate(format!(
+                r#"document.querySelectorAll('[id="{id}"]').forEach(b => b.click())"#
+            ))
+            .await?;
+        self.page().sleep().await;
+        Ok(())
+    }
+
+    pub(super) async fn evaluate_earnings_js(&self) -> anyhow::Result<serde_json::Value> {
+        const JS: &str = r#"(function() {
+            const tables = document.querySelectorAll('[class*="table-GQWAi9kx"]');
+            const result = {};
+            const tableNames = ['eps', 'revenue'];
+
+            tables.forEach((tbl, idx) => {
+                const key = tableNames[idx] ?? `table${idx}`;
+
+                // Column labels: header row uses container-OWKkVLyj → values-OWKkVLyj
+                const headerContainer = tbl.querySelector('[class*="container-OWKkVLyj"]');
+                const valuesEl = headerContainer
+                    ? headerContainer.querySelector('[class*="values-OWKkVLyj"]')
+                    : null;
+                const labels = [];
+                if (valuesEl) {
+                    for (const cell of valuesEl.children) {
+                        const val = cell.querySelector('[class*="value-OxVAcLqi"]');
+                        labels.push(val ? val.textContent.trim() : null);
+                    }
+                }
+
+                // Data rows: container-C9MdAMrq with titleText-C9MdAMrq label
+                const rows = {};
+                for (const row of tbl.querySelectorAll('[class*="container-C9MdAMrq"]')) {
+                    const titleEl = row.querySelector('[class*="titleText-C9MdAMrq"]');
+                    if (!titleEl) continue;
+                    const title = titleEl.textContent.trim();
+
+                    const valuesDiv = row.querySelector('[class*="values-C9MdAMrq"]');
+                    const cells = [];
+                    if (valuesDiv) {
+                        for (const cell of valuesDiv.children) {
+                            const val = cell.querySelector('[class*="value-OxVAcLqi"]');
+                            const locked = !!cell.querySelector('[class*="lockButton"]');
+                            cells.push({ value: val ? val.textContent.trim() : null, locked });
+                        }
+                    }
+                    rows[title] = cells;
+                }
+
+                result[key] = { labels, rows };
+            });
+
+            return result;
+        })()"#;
+
+        let result = self.page().evaluate(JS).await?;
+        let raw = result.value().cloned();
+        result.into_value().with_context(|| {
+            format!(
+                "Earnings JS extractor returned a non-deserializable value; raw: {raw:?}"
             )
         })
     }

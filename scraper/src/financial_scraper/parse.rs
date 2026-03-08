@@ -1,9 +1,11 @@
 use model::financials::{
-    BalanceSheetEntry, CashFlowEntry, IncomeStatementEntry, Period, Periodicity, StatisticsEntry,
+    BalanceSheetEntry, CashFlowEntry, EarningsEntry, IncomeStatementEntry, Period, Periodicity,
+    StatisticsEntry,
 };
 
 use super::FinancialScraper;
 use super::table::{TableData, collect_entries, find_ttm_col};
+use super::utils::{parse_earnings_label, parse_pct, parse_value};
 
 impl FinancialScraper {
     pub(super) async fn parse_income_statement(
@@ -198,5 +200,62 @@ impl FinancialScraper {
                 capex_per_share: td.val(i, "CapEx per share"),
             }
         }))
+    }
+
+    pub(super) async fn parse_earnings(
+        &self,
+        is_quarterly: bool,
+    ) -> anyhow::Result<Vec<EarningsEntry>> {
+        self.switch_earnings_tab(is_quarterly).await?;
+        let data = self.evaluate_earnings_js().await?;
+
+        let eps_labels = &data["eps"]["labels"];
+        let eps_rows = &data["eps"]["rows"];
+        let rev_rows = &data["revenue"]["rows"];
+
+        let periodicity = if is_quarterly { Periodicity::Quarterly } else { Periodicity::Annual };
+        let n = eps_labels.as_array().map(|a| a.len()).unwrap_or(0);
+        let mut entries = Vec::new();
+
+        for i in 0..n {
+            let label_str = match eps_labels[i].as_str() {
+                Some(s) if !s.is_empty() => s,
+                _ => continue,
+            };
+            let period_end = match parse_earnings_label(label_str) {
+                Some(d) => d,
+                None => continue,
+            };
+
+            let eps_reported = parse_value(eps_rows["Reported"][i]["value"].as_str().unwrap_or(""));
+            let eps_estimate = parse_value(eps_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
+            let eps_surprise = parse_pct(eps_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
+
+            let revenue_reported = parse_value(rev_rows["Reported"][i]["value"].as_str().unwrap_or(""));
+            let revenue_estimate = parse_value(rev_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
+            let revenue_surprise = parse_pct(rev_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
+
+            // Skip fully-null columns (paywalled or future estimates with no data yet)
+            if eps_reported.is_none()
+                && eps_estimate.is_none()
+                && revenue_reported.is_none()
+                && revenue_estimate.is_none()
+            {
+                continue;
+            }
+
+            entries.push(EarningsEntry {
+                period: Period { period_end, periodicity },
+                eps_reported,
+                eps_estimate,
+                eps_surprise,
+                revenue_reported,
+                revenue_estimate,
+                revenue_surprise,
+            });
+        }
+
+        entries.sort_by_key(|e| e.period.period_end);
+        Ok(entries)
     }
 }
