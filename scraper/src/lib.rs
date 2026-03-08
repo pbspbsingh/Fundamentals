@@ -6,7 +6,6 @@ pub use financial_scraper::FinancialScraper;
 
 pub const TV_HOME: &str = "https://www.tradingview.com";
 
-
 async fn launch_browser() -> anyhow::Result<Browser> {
     let cfg = config::config();
     let browser = ChromeDriverConfig::new(&cfg.chrome_path)

@@ -2,8 +2,11 @@ use crate::TV_HOME;
 use anyhow::Context;
 use chrome_driver::{Browser, Page, Sleepable};
 use chrono::{Local, NaiveDate};
-use model::statements::{IncomeStatementEntry, Period, Periodicity};
-use model::{Ticker, TradingViewFinancials};
+use model::Ticker;
+use model::statements::{
+    BalanceSheetEntry, CashFlowEntry, IncomeStatementEntry, Period, Periodicity,
+    TradingViewFinancials,
+};
 use tracing::info;
 
 pub struct FinancialScraper {
@@ -48,8 +51,6 @@ impl FinancialScraper {
             .sleep()
             .await;
 
-        let about = self.about().await?;
-
         info!("Clicking statements tab...");
         self.page()
             .find_element("a#statements")
@@ -58,48 +59,71 @@ impl FinancialScraper {
             .await?;
         self.page().sleep().await;
 
-        info!("Fetching income statements...");
+        info!("Fetching income Statements...");
         self.switch_tab(true).await?;
         let quarterly_income = self.parse_income_statement(true).await?;
         self.switch_tab(false).await?;
         let annual_income = self.parse_income_statement(false).await?;
+        let ttm_income = self.parse_ttm_income().await.map_or_else(
+            |e| {
+                tracing::warn!("TTM income unavailable: {e:#}");
+                None
+            },
+            Some,
+        );
 
-        info!("Parsing TTM Income...");
-        let ttm_income = self.parse_ttm_income().await?;
-        eprintln!("{ttm_income:#?}");
+        info!("Fetching Balance Sheet...");
+        self.page()
+            .find_element("a[id='balance sheet']")
+            .await?
+            .click()
+            .await?;
+        self.page().sleep().await;
+        self.switch_tab(true).await?;
+        let quarterly_balance_sheet = self.parse_balance_sheet(true).await?;
+        self.switch_tab(false).await?;
+        let annual_balance_sheet = self.parse_balance_sheet(false).await?;
+
+        info!("Fetching Cash Flow...");
+        self.page()
+            .find_element("a[id='cash flow']")
+            .await?
+            .click()
+            .await?;
+        self.page().sleep().await;
+        self.switch_tab(true).await?;
+        let quarterly_cash_flow = self.parse_cash_flow(true).await?;
+        self.switch_tab(false).await?;
+        let annual_cash_flow = self.parse_cash_flow(false).await?;
+        let ttm_cash_flow = self.parse_ttm_cash_flow().await.map_or_else(
+            |e| {
+                tracing::warn!("TTM cash flow unavailable: {e:#}");
+                None
+            },
+            Some,
+        );
 
         Ok(TradingViewFinancials {
             ticker: ticker.ticker.clone(),
             currency: "USD".into(),
-            about,
             scraped_at: Local::now(),
 
             quarterly_income,
             annual_income,
 
-            quarterly_balance_sheet: vec![],
-            annual_balance_sheet: vec![],
+            quarterly_balance_sheet,
+            annual_balance_sheet,
 
-            quarterly_cash_flow: vec![],
-            annual_cash_flow: vec![],
+            quarterly_cash_flow,
+            annual_cash_flow,
 
-            ttm_income: Some(ttm_income),
-            ttm_cash_flow: None,
+            ttm_income,
+            ttm_cash_flow,
         })
     }
 
     fn page(&self) -> &Page {
         self.page.as_ref().unwrap()
-    }
-
-    async fn about(&self) -> anyhow::Result<String> {
-        Ok(self
-            .page()
-            .find_xpath("//p[starts-with(@class, 'description')]")
-            .await?
-            .inner_text()
-            .await?
-            .unwrap_or_default())
     }
 
     async fn switch_tab(&self, to_quarterly: bool) -> anyhow::Result<()> {
@@ -168,11 +192,14 @@ impl FinancialScraper {
             return { columns, rows };
         })()"#;
 
-        self.page()
-            .evaluate(JS)
-            .await?
-            .into_value()
-            .context("Failed to deserialize table DOM data")
+        let result = self.page().evaluate(JS).await?;
+        let raw = result.value().cloned();
+        result.into_value().with_context(|| {
+            format!(
+                "JS table extractor returned a value that could not be deserialized; \
+                 raw CDP value: {raw:?}"
+            )
+        })
     }
 
     async fn parse_income_statement(
@@ -181,9 +208,12 @@ impl FinancialScraper {
     ) -> anyhow::Result<Vec<IncomeStatementEntry>> {
         let data = self.evaluate_table_js().await?;
 
-        let columns = data["columns"]
-            .as_array()
-            .context("Missing columns array")?;
+        let columns = data["columns"].as_array().with_context(|| {
+            format!(
+                "JS data missing 'columns' array; top-level keys: {:?}",
+                data.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            )
+        })?;
         let rows = &data["rows"];
         let periodicity = if is_quarterly {
             Periodicity::Quarterly
@@ -253,16 +283,30 @@ impl FinancialScraper {
 
     async fn parse_ttm_income(&self) -> anyhow::Result<IncomeStatementEntry> {
         let data = self.evaluate_table_js().await?;
-        let columns = data["columns"].as_array().context("Missing columns array")?;
+        let columns = data["columns"].as_array().with_context(|| {
+            format!(
+                "JS data missing 'columns' array; top-level keys: {:?}",
+                data.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            )
+        })?;
         let rows = &data["rows"];
 
         let i = columns
             .iter()
             .position(|col| col["date"].is_null())
-            .context("TTM column not found")?;
+            .with_context(|| {
+                let labels: Vec<_> = columns.iter().filter_map(|c| c["label"].as_str()).collect();
+                format!(
+                    "No TTM column found among {} columns: {labels:?}",
+                    columns.len()
+                )
+            })?;
 
-        if rows["Total revenue"][i]["locked"].as_bool().unwrap_or(false) {
-            anyhow::bail!("TTM column is paywalled");
+        if rows["Total revenue"][i]["locked"]
+            .as_bool()
+            .unwrap_or(false)
+        {
+            anyhow::bail!("TTM column (index {i} of {}) is paywalled", columns.len());
         }
 
         // period_end = end of the most recent dated quarter in the table
@@ -275,46 +319,208 @@ impl FinancialScraper {
         let v = |name: &str| parse_value(rows[name][i]["value"].as_str().unwrap_or(""));
         let c = |name: &str| parse_pct(rows[name][i]["change"].as_str().unwrap_or(""));
         Ok(IncomeStatementEntry {
-            period: Period { period_end, periodicity: Periodicity::Annual },
-            total_revenue:                  v("Total revenue"),
-            total_revenue_yoy:              c("Total revenue"),
-            cost_of_goods_sold:             v("Cost of goods sold"),
-            gross_profit:                   v("Gross profit"),
-            operating_expenses_excl_cogs:   v("Operating expenses (excl. COGS)"),
-            operating_income:               v("Operating income"),
-            operating_income_yoy:           c("Operating income"),
-            non_operating_income:           v("Non-operating income (total)"),
-            pretax_income:                  v("Pretax income"),
-            pretax_income_yoy:              c("Pretax income"),
-            equity_in_earnings:             v("Equity in earnings"),
-            taxes:                          v("Taxes"),
-            minority_interest:              v("Non-controlling/minority interest"),
-            after_tax_other_income:         v("After tax other income/expense"),
+            period: Period {
+                period_end,
+                periodicity: Periodicity::Annual,
+            },
+            total_revenue: v("Total revenue"),
+            total_revenue_yoy: c("Total revenue"),
+            cost_of_goods_sold: v("Cost of goods sold"),
+            gross_profit: v("Gross profit"),
+            operating_expenses_excl_cogs: v("Operating expenses (excl. COGS)"),
+            operating_income: v("Operating income"),
+            operating_income_yoy: c("Operating income"),
+            non_operating_income: v("Non-operating income (total)"),
+            pretax_income: v("Pretax income"),
+            pretax_income_yoy: c("Pretax income"),
+            equity_in_earnings: v("Equity in earnings"),
+            taxes: v("Taxes"),
+            minority_interest: v("Non-controlling/minority interest"),
+            after_tax_other_income: v("After tax other income/expense"),
             net_income_before_discontinued: v("Net income before discontinued operations"),
-            discontinued_operations:        v("Discontinued operations"),
-            net_income:                     v("Net income"),
-            net_income_yoy:                 c("Net income"),
-            dilution_adjustment:            v("Dilution adjustment"),
-            preferred_dividends:            v("Preferred dividends"),
-            net_income_available_to_common: v("Diluted net income available to common stockholders"),
-            eps_basic:                      v("Basic earnings per share (basic EPS)"),
-            eps_basic_yoy:                  c("Basic earnings per share (basic EPS)"),
-            eps_diluted:                    v("Diluted earnings per share (diluted EPS)"),
-            eps_diluted_yoy:                c("Diluted earnings per share (diluted EPS)"),
-            shares_basic:                   v("Average basic shares outstanding"),
-            shares_diluted:                 v("Diluted shares outstanding"),
-            ebitda:                         v("EBITDA"),
-            ebit:                           v("EBIT"),
-            ebit_yoy:                       c("EBIT"),
-            total_operating_expenses:       v("Total operating expenses"),
+            discontinued_operations: v("Discontinued operations"),
+            net_income: v("Net income"),
+            net_income_yoy: c("Net income"),
+            dilution_adjustment: v("Dilution adjustment"),
+            preferred_dividends: v("Preferred dividends"),
+            net_income_available_to_common: v(
+                "Diluted net income available to common stockholders",
+            ),
+            eps_basic: v("Basic earnings per share (basic EPS)"),
+            eps_basic_yoy: c("Basic earnings per share (basic EPS)"),
+            eps_diluted: v("Diluted earnings per share (diluted EPS)"),
+            eps_diluted_yoy: c("Diluted earnings per share (diluted EPS)"),
+            shares_basic: v("Average basic shares outstanding"),
+            shares_diluted: v("Diluted shares outstanding"),
+            ebitda: v("EBITDA"),
+            ebit: v("EBIT"),
+            ebit_yoy: c("EBIT"),
+            total_operating_expenses: v("Total operating expenses"),
+        })
+    }
+
+    async fn parse_balance_sheet(
+        &self,
+        is_quarterly: bool,
+    ) -> anyhow::Result<Vec<BalanceSheetEntry>> {
+        let data = self.evaluate_table_js().await?;
+        let columns = data["columns"].as_array().with_context(|| {
+            format!(
+                "JS data missing 'columns' array; top-level keys: {:?}",
+                data.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            )
+        })?;
+        let rows = &data["rows"];
+        let periodicity = if is_quarterly {
+            Periodicity::Quarterly
+        } else {
+            Periodicity::Annual
+        };
+
+        let mut entries: Vec<BalanceSheetEntry> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, col)| {
+                let date = parse_month_year(col["date"].as_str()?)?;
+                if rows["Total assets"][i]["locked"].as_bool().unwrap_or(false) {
+                    return None;
+                }
+                let v = |name: &str| parse_value(rows[name][i]["value"].as_str().unwrap_or(""));
+                let c = |name: &str| parse_pct(rows[name][i]["change"].as_str().unwrap_or(""));
+                Some(BalanceSheetEntry {
+                    period: Period {
+                        period_end: date,
+                        periodicity,
+                    },
+                    total_assets: v("Total assets"),
+                    total_assets_yoy: c("Total assets"),
+                    total_liabilities: v("Total liabilities"),
+                    total_liabilities_yoy: c("Total liabilities"),
+                    total_equity: v("Total equity"),
+                    total_equity_yoy: c("Total equity"),
+                    total_liabilities_and_equity: v("Total liabilities & shareholders' equities"),
+                    total_debt: v("Total debt"),
+                    net_debt: v("Net debt"),
+                })
+            })
+            .collect();
+
+        entries.sort_by_key(|e| e.period.period_end);
+        Ok(entries)
+    }
+
+    async fn parse_cash_flow(&self, is_quarterly: bool) -> anyhow::Result<Vec<CashFlowEntry>> {
+        let data = self.evaluate_table_js().await?;
+        let columns = data["columns"].as_array().with_context(|| {
+            format!(
+                "JS data missing 'columns' array; top-level keys: {:?}",
+                data.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            )
+        })?;
+        let rows = &data["rows"];
+        let periodicity = if is_quarterly {
+            Periodicity::Quarterly
+        } else {
+            Periodicity::Annual
+        };
+
+        let mut entries: Vec<CashFlowEntry> = columns
+            .iter()
+            .enumerate()
+            .filter_map(|(i, col)| {
+                let date = parse_month_year(col["date"].as_str()?)?;
+                if rows["Cash from operating activities"][i]["locked"]
+                    .as_bool()
+                    .unwrap_or(false)
+                {
+                    return None;
+                }
+                let v = |name: &str| parse_value(rows[name][i]["value"].as_str().unwrap_or(""));
+                let c = |name: &str| parse_pct(rows[name][i]["change"].as_str().unwrap_or(""));
+                Some(CashFlowEntry {
+                    period: Period {
+                        period_end: date,
+                        periodicity,
+                    },
+                    operating_cash_flow: v("Cash from operating activities"),
+                    operating_cash_flow_yoy: c("Cash from operating activities"),
+                    investing_cash_flow: v("Cash from investing activities"),
+                    investing_cash_flow_yoy: c("Cash from investing activities"),
+                    financing_cash_flow: v("Cash from financing activities"),
+                    financing_cash_flow_yoy: c("Cash from financing activities"),
+                    free_cash_flow: v("Free cash flow"),
+                    free_cash_flow_yoy: c("Free cash flow"),
+                })
+            })
+            .collect();
+
+        entries.sort_by_key(|e| e.period.period_end);
+        Ok(entries)
+    }
+
+    async fn parse_ttm_cash_flow(&self) -> anyhow::Result<CashFlowEntry> {
+        let data = self.evaluate_table_js().await?;
+        let columns = data["columns"].as_array().with_context(|| {
+            format!(
+                "JS data missing 'columns' array; top-level keys: {:?}",
+                data.as_object().map(|o| o.keys().collect::<Vec<_>>())
+            )
+        })?;
+        let rows = &data["rows"];
+
+        let i = columns
+            .iter()
+            .position(|col| col["date"].is_null())
+            .with_context(|| {
+                let labels: Vec<_> = columns.iter().filter_map(|c| c["label"].as_str()).collect();
+                format!(
+                    "No TTM column found among {} columns: {labels:?}",
+                    columns.len()
+                )
+            })?;
+
+        if rows["Cash from operating activities"][i]["locked"]
+            .as_bool()
+            .unwrap_or(false)
+        {
+            anyhow::bail!("TTM column (index {i} of {}) is paywalled", columns.len());
+        }
+
+        let period_end = columns
+            .iter()
+            .filter_map(|col| parse_month_year(col["date"].as_str()?))
+            .max()
+            .unwrap_or_else(|| Local::now().date_naive());
+
+        let v = |name: &str| parse_value(rows[name][i]["value"].as_str().unwrap_or(""));
+        let c = |name: &str| parse_pct(rows[name][i]["change"].as_str().unwrap_or(""));
+        Ok(CashFlowEntry {
+            period: Period {
+                period_end,
+                periodicity: Periodicity::Annual,
+            },
+            operating_cash_flow: v("Cash from operating activities"),
+            operating_cash_flow_yoy: c("Cash from operating activities"),
+            investing_cash_flow: v("Cash from investing activities"),
+            investing_cash_flow_yoy: c("Cash from investing activities"),
+            financing_cash_flow: v("Cash from financing activities"),
+            financing_cash_flow_yoy: c("Cash from financing activities"),
+            free_cash_flow: v("Free cash flow"),
+            free_cash_flow_yoy: c("Free cash flow"),
         })
     }
 }
 
 // ── Value parsing ─────────────────────────────────────────────────────────────
 
+#[inline]
+fn round3(x: f64) -> f64 {
+    (x * 1000.0).round() / 1000.0
+}
+
 /// Parse a TradingView numeric value like "634.34 M", "1.63 B", "-105.53 M".
 /// Unicode directional marks (U+202A/202C) are stripped; U+2212 is treated as minus.
+/// Returns `None` for TradingView's "no data" sentinel "—" (U+2014) and empty strings.
 fn parse_value(s: &str) -> Option<f64> {
     let clean: String = s
         .chars()
@@ -326,6 +532,9 @@ fn parse_value(s: &str) -> Option<f64> {
         })
         .collect();
     let clean = clean.trim();
+    if clean.is_empty() || clean == "\u{2014}" {
+        return None;
+    }
 
     let (neg, rest) = if clean.starts_with('\u{2212}') || clean.starts_with('-') {
         let skip = clean.chars().next()?.len_utf8();
@@ -345,10 +554,11 @@ fn parse_value(s: &str) -> Option<f64> {
     };
 
     let n: f64 = num_str.trim().parse().ok()?;
-    Some(if neg { -(n * mult) } else { n * mult })
+    Some(round3(if neg { -(n * mult) } else { n * mult }))
 }
 
 /// Parse a TradingView percentage string like "+20.78%" or "−15.40%" → fractional f64.
+/// Returns `None` for TradingView's "no data" sentinel "—" (U+2014) and empty strings.
 fn parse_pct(s: &str) -> Option<f64> {
     let clean: String = s
         .chars()
@@ -359,10 +569,14 @@ fn parse_pct(s: &str) -> Option<f64> {
             )
         })
         .collect();
+    let clean = clean.trim();
+    if clean.is_empty() || clean == "\u{2014}" {
+        return None;
+    }
     // Replace unicode minus sign with ASCII minus, then strip trailing '%'
-    let clean = clean.trim().replace('\u{2212}', "-");
+    let clean = clean.replace('\u{2212}', "-");
     let n: f64 = clean.trim_end_matches('%').parse().ok()?;
-    Some(n / 100.0)
+    Some(round3(n / 100.0))
 }
 
 /// Parse "Mar 2019" → last day of that month (2019-03-31).

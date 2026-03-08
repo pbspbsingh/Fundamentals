@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{DateTime, Local, NaiveDate};
 use serde::{Deserialize, Serialize};
 
 // ── Shared ────────────────────────────────────────────────────────────────────
@@ -61,33 +61,15 @@ pub struct IncomeStatementEntry {
 pub struct BalanceSheetEntry {
     pub period: Period,
 
-    pub cash_and_equivalents: Option<f64>,
-    pub short_term_investments: Option<f64>,
-    pub total_cash_and_short_term_investments: Option<f64>,
-    pub accounts_receivable: Option<f64>,
-    pub total_receivables: Option<f64>,
-    pub inventory: Option<f64>,
-    pub other_current_assets: Option<f64>,
-    pub total_current_assets: Option<f64>,
-    pub gross_ppe: Option<f64>,
-    pub accumulated_depreciation: Option<f64>,
-    pub net_ppe: Option<f64>,
-    pub goodwill: Option<f64>,
-    pub intangible_assets: Option<f64>,
-    pub other_long_term_assets: Option<f64>,
     pub total_assets: Option<f64>,
-    pub accounts_payable: Option<f64>,
-    pub short_term_debt: Option<f64>,
-    pub other_current_liabilities: Option<f64>,
-    pub total_current_liabilities: Option<f64>,
-    pub long_term_debt: Option<f64>,
-    pub other_long_term_liabilities: Option<f64>,
+    pub total_assets_yoy: Option<f64>,
     pub total_liabilities: Option<f64>,
-    pub common_stock: Option<f64>,
-    pub retained_earnings: Option<f64>,
-    pub total_stockholders_equity: Option<f64>,
+    pub total_liabilities_yoy: Option<f64>,
     pub total_equity: Option<f64>,
+    pub total_equity_yoy: Option<f64>,
     pub total_liabilities_and_equity: Option<f64>,
+    pub total_debt: Option<f64>,
+    pub net_debt: Option<f64>,
 }
 
 // ── Cash Flow ─────────────────────────────────────────────────────────────────
@@ -96,23 +78,12 @@ pub struct BalanceSheetEntry {
 pub struct CashFlowEntry {
     pub period: Period,
 
-    pub net_income: Option<f64>,
-    pub depreciation_and_amortization: Option<f64>,
-    pub stock_based_compensation: Option<f64>,
-    pub change_in_working_capital: Option<f64>,
-    pub other_operating_activities: Option<f64>,
     pub operating_cash_flow: Option<f64>,
     pub operating_cash_flow_yoy: Option<f64>,
-    pub capex: Option<f64>,
-    pub acquisitions: Option<f64>,
-    pub other_investing_activities: Option<f64>,
     pub investing_cash_flow: Option<f64>,
-    pub dividends_paid: Option<f64>,
-    pub share_issuance_repurchase: Option<f64>,
-    pub debt_issuance_repayment: Option<f64>,
-    pub other_financing_activities: Option<f64>,
+    pub investing_cash_flow_yoy: Option<f64>,
     pub financing_cash_flow: Option<f64>,
-    pub net_change_in_cash: Option<f64>,
+    pub financing_cash_flow_yoy: Option<f64>,
     pub free_cash_flow: Option<f64>,
     pub free_cash_flow_yoy: Option<f64>,
 }
@@ -123,13 +94,16 @@ pub struct CashFlowEntry {
 pub struct TradingViewFinancials {
     pub ticker: String,
     pub currency: String,
-    pub periodicity: Periodicity,
-    pub scraped_at: chrono::DateTime<chrono::Utc>,
+    pub scraped_at: DateTime<Local>,
 
-    /// Chronological order, oldest first
-    pub income_statement: Vec<IncomeStatementEntry>,
-    pub balance_sheet: Vec<BalanceSheetEntry>,
-    pub cash_flow: Vec<CashFlowEntry>,
+    pub quarterly_income: Vec<IncomeStatementEntry>,
+    pub annual_income: Vec<IncomeStatementEntry>,
+
+    pub quarterly_balance_sheet: Vec<BalanceSheetEntry>,
+    pub annual_balance_sheet: Vec<BalanceSheetEntry>,
+
+    pub quarterly_cash_flow: Vec<CashFlowEntry>,
+    pub annual_cash_flow: Vec<CashFlowEntry>,
 
     pub ttm_income: Option<IncomeStatementEntry>,
     pub ttm_cash_flow: Option<CashFlowEntry>,

@@ -1,10 +1,10 @@
+use model::Ticker;
+use scraper::FinancialScraper;
 use std::time::Duration;
 use time::macros::format_description;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::OffsetTime;
-use model::Ticker;
-use scraper::FinancialScraper;
 
 fn main() -> anyhow::Result<()> {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
@@ -27,8 +27,20 @@ fn main() -> anyhow::Result<()> {
 async fn async_main() -> anyhow::Result<()> {
     info!("Starting the app with config:\n{:#?}", config::config());
     let scraper = FinancialScraper::new().await?;
-    if let Err(e) = scraper.fetch_financials(&Ticker::new("NASDAQ", "PLTR")).await {
-        error!("Error fetching financials: {}", e);
+    match scraper
+        .fetch_financials(&Ticker::new("NASDAQ", "PLTR"))
+        .await
+    {
+        Err(e) => {
+            error!("Error fetching financials: {}", e);
+        }
+        Ok(financials) => {
+            tokio::fs::write(
+                "financials.json",
+                serde_json::to_string_pretty(&financials)?,
+            )
+            .await?;
+        }
     }
     drop(scraper);
     tokio::time::sleep(Duration::from_secs(1)).await;
