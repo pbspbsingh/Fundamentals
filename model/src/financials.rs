@@ -12,6 +12,7 @@ pub enum Periodicity {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Period {
+    pub label: String,
     pub period_end: NaiveDate,
     pub periodicity: Periodicity,
 }

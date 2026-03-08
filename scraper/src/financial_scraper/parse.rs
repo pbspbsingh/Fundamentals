@@ -55,9 +55,9 @@ impl FinancialScraper {
     pub(super) async fn parse_ttm_income(&self) -> anyhow::Result<IncomeStatementEntry> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        let (i, period_end) = find_ttm_col(&columns, &td, "Total revenue")?;
+        let (i, period_end, label) = find_ttm_col(&columns, &td,"Total revenue")?;
         Ok(IncomeStatementEntry {
-            period: Period { period_end, periodicity: Periodicity::Annual },
+            period: Period { label, period_end, periodicity: Periodicity::Annual },
             total_revenue: td.val(i, "Total revenue"),
             total_revenue_yoy: td.chg(i, "Total revenue"),
             cost_of_goods_sold: td.val(i, "Cost of goods sold"),
@@ -138,9 +138,9 @@ impl FinancialScraper {
     pub(super) async fn parse_ttm_cash_flow(&self) -> anyhow::Result<CashFlowEntry> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        let (i, period_end) = find_ttm_col(&columns, &td, "Cash from operating activities")?;
+        let (i, period_end, label) = find_ttm_col(&columns, &td,"Cash from operating activities")?;
         Ok(CashFlowEntry {
-            period: Period { period_end, periodicity: Periodicity::Annual },
+            period: Period { label, period_end, periodicity: Periodicity::Annual },
             operating_cash_flow: td.val(i, "Cash from operating activities"),
             operating_cash_flow_yoy: td.chg(i, "Cash from operating activities"),
             investing_cash_flow: td.val(i, "Cash from investing activities"),
@@ -245,7 +245,7 @@ impl FinancialScraper {
             }
 
             entries.push(EarningsEntry {
-                period: Period { period_end, periodicity },
+                period: Period { label: label_str.to_string(), period_end, periodicity },
                 eps_reported,
                 eps_estimate,
                 eps_surprise,

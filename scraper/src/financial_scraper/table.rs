@@ -41,7 +41,8 @@ pub(super) fn collect_entries<T: HasPeriodEnd>(
             if td.locked(i, lock_field) {
                 return None;
             }
-            Some(build(td, i, Period { period_end: date, periodicity }))
+            let label = col["label"].as_str().unwrap_or("").to_string();
+            Some(build(td, i, Period { label, period_end: date, periodicity }))
         })
         .collect();
     entries.sort_by_key(|e| e.period_end());
@@ -52,7 +53,7 @@ pub(super) fn find_ttm_col(
     columns: &[serde_json::Value],
     td: &TableData<'_>,
     lock_field: &str,
-) -> anyhow::Result<(usize, NaiveDate)> {
+) -> anyhow::Result<(usize, NaiveDate, String)> {
     let i = columns
         .iter()
         .position(|col| col["date"].is_null())
@@ -63,12 +64,13 @@ pub(super) fn find_ttm_col(
     if td.locked(i, lock_field) {
         anyhow::bail!("TTM column (index {i} of {}) is paywalled", columns.len());
     }
+    let label = columns[i]["label"].as_str().unwrap_or("TTM").to_string();
     let period_end = columns
         .iter()
         .filter_map(|col| parse_month_year(col["date"].as_str()?))
         .max()
         .unwrap_or_else(|| Local::now().date_naive());
-    Ok((i, period_end))
+    Ok((i, period_end, label))
 }
 
 pub(super) trait HasPeriodEnd {
