@@ -1,14 +1,17 @@
 mod client;
-mod compute;
 mod fetch;
 mod parse;
-mod types;
 
-pub use client::EdgarClient;
-pub use types::*;
+pub use model::edgar::{Document, InsiderTransaction};
 
-/// Fetch all EDGAR fundamental data for a ticker symbol.
-pub async fn fetch_fundamentals(ticker: &str) -> anyhow::Result<EdgarFundamentals> {
-    let client = EdgarClient::new()?;
-    fetch::fetch_fundamentals(&client, ticker).await
+/// Fetch the 12 most recent 8-K filings for a ticker, with full text content.
+pub async fn fetch_documents(ticker: &str) -> anyhow::Result<Vec<Document>> {
+    let client = client::EdgarClient::new()?;
+    fetch::fetch_documents(&client, ticker).await
+}
+
+/// Fetch insider (Form 4) transactions for the past 12 months.
+pub async fn fetch_insider_transactions(ticker: &str) -> anyhow::Result<Vec<InsiderTransaction>> {
+    let client = client::EdgarClient::new()?;
+    fetch::fetch_insider_transactions(&client, ticker).await
 }

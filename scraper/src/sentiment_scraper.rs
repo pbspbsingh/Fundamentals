@@ -130,7 +130,10 @@ impl SentimentScraper {
                 let published_at = chrono::DateTime::parse_from_rfc2822(event_time)
                     .ok()?
                     .with_timezone(&chrono::Utc);
-                Some(NewsHeadline { headline, published_at })
+                Some(NewsHeadline {
+                    headline,
+                    published_at,
+                })
             })
             .collect();
         Ok(items)
@@ -165,9 +168,9 @@ impl SentimentScraper {
 
     async fn scrape_overview(&self) -> anyhow::Result<(String, String, String)> {
         let data = self.evaluate_overview_js().await?;
-        let sector   = data["sector"].as_str().unwrap_or("").to_string();
+        let sector = data["sector"].as_str().unwrap_or("").to_string();
         let industry = data["industry"].as_str().unwrap_or("").to_string();
-        let about    = data["about"].as_str().unwrap_or("").to_string();
+        let about = data["about"].as_str().unwrap_or("").to_string();
         Ok((sector, industry, about))
     }
 

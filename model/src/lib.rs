@@ -1,3 +1,4 @@
+pub mod edgar;
 pub mod financials;
 pub mod sentiment;
 

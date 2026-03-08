@@ -31,7 +31,11 @@ pub(super) fn collect_entries<T: HasPeriodEnd>(
     lock_field: &str,
     build: impl Fn(&TableData<'_>, usize, Period) -> T,
 ) -> Vec<T> {
-    let periodicity = if is_quarterly { Periodicity::Quarterly } else { Periodicity::Annual };
+    let periodicity = if is_quarterly {
+        Periodicity::Quarterly
+    } else {
+        Periodicity::Annual
+    };
     let mut entries: Vec<T> = columns
         .iter()
         .enumerate()
@@ -41,7 +45,15 @@ pub(super) fn collect_entries<T: HasPeriodEnd>(
                 return None;
             }
             let label = col["label"].as_str().unwrap_or("").to_string();
-            Some(build(td, i, Period { label, period_end: Some(date), periodicity }))
+            Some(build(
+                td,
+                i,
+                Period {
+                    label,
+                    period_end: Some(date),
+                    periodicity,
+                },
+            ))
         })
         .collect();
     entries.sort_by_key(|e| e.period_end());
@@ -58,7 +70,10 @@ pub(super) fn find_ttm_col(
         .position(|col| col["date"].is_null())
         .with_context(|| {
             let labels: Vec<_> = columns.iter().filter_map(|c| c["label"].as_str()).collect();
-            format!("No TTM column found among {} columns: {labels:?}", columns.len())
+            format!(
+                "No TTM column found among {} columns: {labels:?}",
+                columns.len()
+            )
         })?;
     if td.locked(i, lock_field) {
         anyhow::bail!("TTM column (index {i} of {}) is paywalled", columns.len());
@@ -77,14 +92,22 @@ pub(super) trait HasPeriodEnd {
 }
 
 impl HasPeriodEnd for IncomeStatementEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
+    fn period_end(&self) -> NaiveDate {
+        self.period.period_end.unwrap_or_default()
+    }
 }
 impl HasPeriodEnd for BalanceSheetEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
+    fn period_end(&self) -> NaiveDate {
+        self.period.period_end.unwrap_or_default()
+    }
 }
 impl HasPeriodEnd for CashFlowEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
+    fn period_end(&self) -> NaiveDate {
+        self.period.period_end.unwrap_or_default()
+    }
 }
 impl HasPeriodEnd for StatisticsEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
+    fn period_end(&self) -> NaiveDate {
+        self.period.period_end.unwrap_or_default()
+    }
 }

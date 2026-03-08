@@ -14,8 +14,12 @@ impl FinancialScraper {
     ) -> anyhow::Result<Vec<IncomeStatementEntry>> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        Ok(collect_entries(&columns, &td, is_quarterly, "Total revenue", |td, i, period| {
-            IncomeStatementEntry {
+        Ok(collect_entries(
+            &columns,
+            &td,
+            is_quarterly,
+            "Total revenue",
+            |td, i, period| IncomeStatementEntry {
                 period,
                 total_revenue: td.val(i, "Total revenue"),
                 total_revenue_yoy: td.chg(i, "Total revenue"),
@@ -31,13 +35,15 @@ impl FinancialScraper {
                 taxes: td.val(i, "Taxes"),
                 minority_interest: td.val(i, "Non-controlling/minority interest"),
                 after_tax_other_income: td.val(i, "After tax other income/expense"),
-                net_income_before_discontinued: td.val(i, "Net income before discontinued operations"),
+                net_income_before_discontinued: td
+                    .val(i, "Net income before discontinued operations"),
                 discontinued_operations: td.val(i, "Discontinued operations"),
                 net_income: td.val(i, "Net income"),
                 net_income_yoy: td.chg(i, "Net income"),
                 dilution_adjustment: td.val(i, "Dilution adjustment"),
                 preferred_dividends: td.val(i, "Preferred dividends"),
-                net_income_available_to_common: td.val(i, "Diluted net income available to common stockholders"),
+                net_income_available_to_common: td
+                    .val(i, "Diluted net income available to common stockholders"),
                 eps_basic: td.val(i, "Basic earnings per share (basic EPS)"),
                 eps_basic_yoy: td.chg(i, "Basic earnings per share (basic EPS)"),
                 eps_diluted: td.val(i, "Diluted earnings per share (diluted EPS)"),
@@ -48,16 +54,20 @@ impl FinancialScraper {
                 ebit: td.val(i, "EBIT"),
                 ebit_yoy: td.chg(i, "EBIT"),
                 total_operating_expenses: td.val(i, "Total operating expenses"),
-            }
-        }))
+            },
+        ))
     }
 
     pub(super) async fn parse_ttm_income(&self) -> anyhow::Result<IncomeStatementEntry> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        let (i, period_end, label) = find_ttm_col(&columns, &td,"Total revenue")?;
+        let (i, period_end, label) = find_ttm_col(&columns, &td, "Total revenue")?;
         Ok(IncomeStatementEntry {
-            period: Period { label, period_end: Some(period_end), periodicity: Periodicity::Annual },
+            period: Period {
+                label,
+                period_end: Some(period_end),
+                periodicity: Periodicity::Annual,
+            },
             total_revenue: td.val(i, "Total revenue"),
             total_revenue_yoy: td.chg(i, "Total revenue"),
             cost_of_goods_sold: td.val(i, "Cost of goods sold"),
@@ -78,7 +88,8 @@ impl FinancialScraper {
             net_income_yoy: td.chg(i, "Net income"),
             dilution_adjustment: td.val(i, "Dilution adjustment"),
             preferred_dividends: td.val(i, "Preferred dividends"),
-            net_income_available_to_common: td.val(i, "Diluted net income available to common stockholders"),
+            net_income_available_to_common: td
+                .val(i, "Diluted net income available to common stockholders"),
             eps_basic: td.val(i, "Basic earnings per share (basic EPS)"),
             eps_basic_yoy: td.chg(i, "Basic earnings per share (basic EPS)"),
             eps_diluted: td.val(i, "Diluted earnings per share (diluted EPS)"),
@@ -98,8 +109,12 @@ impl FinancialScraper {
     ) -> anyhow::Result<Vec<BalanceSheetEntry>> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        Ok(collect_entries(&columns, &td, is_quarterly, "Total assets", |td, i, period| {
-            BalanceSheetEntry {
+        Ok(collect_entries(
+            &columns,
+            &td,
+            is_quarterly,
+            "Total assets",
+            |td, i, period| BalanceSheetEntry {
                 period,
                 total_assets: td.val(i, "Total assets"),
                 total_assets_yoy: td.chg(i, "Total assets"),
@@ -107,11 +122,12 @@ impl FinancialScraper {
                 total_liabilities_yoy: td.chg(i, "Total liabilities"),
                 total_equity: td.val(i, "Total equity"),
                 total_equity_yoy: td.chg(i, "Total equity"),
-                total_liabilities_and_equity: td.val(i, "Total liabilities & shareholders' equities"),
+                total_liabilities_and_equity: td
+                    .val(i, "Total liabilities & shareholders' equities"),
                 total_debt: td.val(i, "Total debt"),
                 net_debt: td.val(i, "Net debt"),
-            }
-        }))
+            },
+        ))
     }
 
     pub(super) async fn parse_cash_flow(
@@ -120,8 +136,12 @@ impl FinancialScraper {
     ) -> anyhow::Result<Vec<CashFlowEntry>> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        Ok(collect_entries(&columns, &td, is_quarterly, "Cash from operating activities", |td, i, period| {
-            CashFlowEntry {
+        Ok(collect_entries(
+            &columns,
+            &td,
+            is_quarterly,
+            "Cash from operating activities",
+            |td, i, period| CashFlowEntry {
                 period,
                 operating_cash_flow: td.val(i, "Cash from operating activities"),
                 operating_cash_flow_yoy: td.chg(i, "Cash from operating activities"),
@@ -131,16 +151,20 @@ impl FinancialScraper {
                 financing_cash_flow_yoy: td.chg(i, "Cash from financing activities"),
                 free_cash_flow: td.val(i, "Free cash flow"),
                 free_cash_flow_yoy: td.chg(i, "Free cash flow"),
-            }
-        }))
+            },
+        ))
     }
 
     pub(super) async fn parse_ttm_cash_flow(&self) -> anyhow::Result<CashFlowEntry> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        let (i, period_end, label) = find_ttm_col(&columns, &td,"Cash from operating activities")?;
+        let (i, period_end, label) = find_ttm_col(&columns, &td, "Cash from operating activities")?;
         Ok(CashFlowEntry {
-            period: Period { label, period_end: Some(period_end), periodicity: Periodicity::Annual },
+            period: Period {
+                label,
+                period_end: Some(period_end),
+                periodicity: Periodicity::Annual,
+            },
             operating_cash_flow: td.val(i, "Cash from operating activities"),
             operating_cash_flow_yoy: td.chg(i, "Cash from operating activities"),
             investing_cash_flow: td.val(i, "Cash from investing activities"),
@@ -158,8 +182,12 @@ impl FinancialScraper {
     ) -> anyhow::Result<Vec<StatisticsEntry>> {
         let (columns, rows) = self.fetch_table().await?;
         let td = TableData(&rows);
-        Ok(collect_entries(&columns, &td, is_quarterly, "Total common shares outstanding", |td, i, period| {
-            StatisticsEntry {
+        Ok(collect_entries(
+            &columns,
+            &td,
+            is_quarterly,
+            "Total common shares outstanding",
+            |td, i, period| StatisticsEntry {
                 period,
                 shares_outstanding: td.val(i, "Total common shares outstanding"),
                 free_float: td.val(i, "Free float"),
@@ -198,8 +226,8 @@ impl FinancialScraper {
                 cash_per_share: td.val(i, "Cash per share"),
                 total_debt_per_share: td.val(i, "Total debt per share"),
                 capex_per_share: td.val(i, "CapEx per share"),
-            }
-        }))
+            },
+        ))
     }
 
     pub(super) async fn parse_earnings(
@@ -213,7 +241,11 @@ impl FinancialScraper {
         let eps_rows = &data["eps"]["rows"];
         let rev_rows = &data["revenue"]["rows"];
 
-        let periodicity = if is_quarterly { Periodicity::Quarterly } else { Periodicity::Annual };
+        let periodicity = if is_quarterly {
+            Periodicity::Quarterly
+        } else {
+            Periodicity::Annual
+        };
         let n = eps_labels.as_array().map(|a| a.len()).unwrap_or(0);
         let mut entries = Vec::new();
 
@@ -226,9 +258,12 @@ impl FinancialScraper {
             let eps_estimate = parse_value(eps_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
             let eps_surprise = parse_pct(eps_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
 
-            let revenue_reported = parse_value(rev_rows["Reported"][i]["value"].as_str().unwrap_or(""));
-            let revenue_estimate = parse_value(rev_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
-            let revenue_surprise = parse_pct(rev_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
+            let revenue_reported =
+                parse_value(rev_rows["Reported"][i]["value"].as_str().unwrap_or(""));
+            let revenue_estimate =
+                parse_value(rev_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
+            let revenue_surprise =
+                parse_pct(rev_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
 
             // Skip fully-null columns (paywalled or future estimates with no data yet)
             if eps_reported.is_none()
@@ -240,7 +275,11 @@ impl FinancialScraper {
             }
 
             entries.push(EarningsEntry {
-                period: Period { label: label_str.to_string(), period_end: None, periodicity },
+                period: Period {
+                    label: label_str.to_string(),
+                    period_end: None,
+                    periodicity,
+                },
                 eps_reported,
                 eps_estimate,
                 eps_surprise,

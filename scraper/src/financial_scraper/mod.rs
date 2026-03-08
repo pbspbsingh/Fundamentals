@@ -313,9 +313,7 @@ impl FinancialScraper {
         let result = self.page().evaluate(JS).await?;
         let raw = result.value().cloned();
         result.into_value().with_context(|| {
-            format!(
-                "Earnings JS extractor returned a non-deserializable value; raw: {raw:?}"
-            )
+            format!("Earnings JS extractor returned a non-deserializable value; raw: {raw:?}")
         })
     }
 

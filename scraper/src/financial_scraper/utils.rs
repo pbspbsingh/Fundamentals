@@ -62,7 +62,11 @@ pub(super) fn parse_pct(s: &str) -> Option<f64> {
     }
     // Replace unicode minus sign with ASCII minus, then strip leading '+' and trailing '%'
     let clean = clean.replace('\u{2212}', "-");
-    let n: f64 = clean.trim_start_matches('+').trim_end_matches('%').parse().ok()?;
+    let n: f64 = clean
+        .trim_start_matches('+')
+        .trim_end_matches('%')
+        .parse()
+        .ok()?;
     // Round to 5 decimal places (= 3 decimal places of the percentage).
     // pct_serde serializes as a string via format!("{:.3}", v * 100), so floating
     // point noise never reaches the JSON regardless, but we round here for clean

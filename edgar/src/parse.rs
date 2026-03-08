@@ -1,20 +1,5 @@
-//! Parse raw SEC EDGAR JSON and Form 4 XML into intermediate vectors of
-//! `(period_end: NaiveDate, fy: u16, fp: String, val: T)` tuples.
-
 use anyhow::Context;
 use chrono::NaiveDate;
-
-/// A single XBRL fact entry after filtering.
-#[derive(Debug, Clone)]
-pub struct Fact {
-    pub end: NaiveDate,
-    pub fy: u16,
-    /// "Q1".."Q4" or "FY" / "CY"
-    pub fp: String,
-    pub val: f64,
-    /// Accession number — used to deduplicate (higher = more recent)
-    pub accn: String,
-}
 
 /// A parsed Form 4 non-derivative transaction.
 #[derive(Debug, Clone)]
@@ -27,158 +12,6 @@ pub struct RawInsiderTx {
     pub price: Option<f64>,
     pub acq_disp: char,
 }
-
-// ── Company facts ────────────────────────────────────────────────────────────
-
-/// Extract quarterly (`form = "10-Q"`) USD facts, merging all fallback concepts.
-/// Earlier concepts take priority for the same period; later ones fill gaps.
-pub fn extract_quarterly(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact> {
-    merge_concepts(facts, concepts, "USD", &["10-Q"])
-}
-
-/// Extract annual (`form = "10-K"`) USD facts, merging all fallback concepts.
-pub fn extract_annual(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact> {
-    merge_concepts(facts, concepts, "USD", &["10-K"])
-}
-
-/// Extract quarterly share-count facts (unit = "shares"), merging fallback concepts.
-/// 10-K annual entries (full-year weighted average) are excluded to keep the vec
-/// purely quarterly so QoQ diffs are meaningful.
-pub fn extract_quarterly_shares(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact> {
-    merge_concepts(facts, concepts, "shares", &["10-Q"])
-}
-
-/// Extract quarterly EPS facts (unit = "USD/shares"), merging fallback concepts.
-pub fn extract_quarterly_eps(facts: &serde_json::Value, concepts: &[&str]) -> Vec<Fact> {
-    merge_concepts(facts, concepts, "USD/shares", &["10-Q"])
-}
-
-/// Merge facts from multiple concepts. The first concept to provide a value for
-/// a given period wins; later concepts only fill dates that have no entry yet.
-fn merge_concepts(
-    facts: &serde_json::Value,
-    concepts: &[&str],
-    unit: &str,
-    forms: &[&str],
-) -> Vec<Fact> {
-    let mut map: std::collections::HashMap<NaiveDate, Fact> = std::collections::HashMap::new();
-    for concept in concepts {
-        for fact in extract_facts(facts, concept, unit, forms) {
-            map.entry(fact.end).or_insert(fact);
-        }
-    }
-    map.into_values().collect()
-}
-
-fn extract_facts(
-    facts: &serde_json::Value,
-    concept: &str,
-    unit: &str,
-    forms: &[&str],
-) -> Vec<Fact> {
-    // JSON Pointer (RFC 6901) uses '/' as a separator and '~1' to represent a
-    // literal '/'.  The EDGAR unit "USD/shares" contains a slash, so we must
-    // escape it before embedding it in the pointer string.
-    let unit_esc = unit.replace('/', "~1");
-    let entries = facts
-        .pointer(&format!("/us-gaap/{concept}/units/{unit_esc}"))
-        .and_then(|v| v.as_array());
-
-    let Some(arr) = entries else {
-        return vec![];
-    };
-
-    // Collect, filter to desired forms, deduplicate by `end` keeping latest accn
-    let mut map: std::collections::HashMap<NaiveDate, Fact> = std::collections::HashMap::new();
-
-    for entry in arr {
-        let form = entry["form"].as_str().unwrap_or("");
-        if !forms.contains(&form) {
-            continue;
-        }
-        // EDGAR files both a single-quarter figure and a YTD cumulative under the same
-        // end date and fp for 10-Q filings. The single-quarter entry always carries a
-        // `frame` field (e.g. "CY2025Q1"); YTD/cumulative entries don't. Filter by that.
-        // For 10-K, use duration (300–400 days) to accept full-year entries only.
-        let is_10k = form == "10-K";
-        if is_10k {
-            if let (Some(start_str), Some(end_str)) =
-                (entry["start"].as_str(), entry["end"].as_str())
-            {
-                let start = NaiveDate::parse_from_str(start_str, "%Y-%m-%d");
-                let end = NaiveDate::parse_from_str(end_str, "%Y-%m-%d");
-                if let (Ok(s), Ok(e)) = (start, end) {
-                    if !(300..=400).contains(&(e - s).num_days()) {
-                        continue;
-                    }
-                }
-            }
-        } else {
-            // 10-Q: accept single-period entries.
-            // Modern filings (post ~2021) carry a `frame` field; older filings don't.
-            // Accept if: has a frame field  OR  duration ≤ 120 days (true quarterly, not YTD).
-            let has_frame = entry.get("frame").map(|v| !v.is_null()).unwrap_or(false);
-            if !has_frame {
-                // Fall back to duration check
-                let within_quarter = match (entry["start"].as_str(), entry["end"].as_str()) {
-                    (Some(s), Some(e)) => {
-                        match (
-                            NaiveDate::parse_from_str(s, "%Y-%m-%d"),
-                            NaiveDate::parse_from_str(e, "%Y-%m-%d"),
-                        ) {
-                            (Ok(sd), Ok(ed)) => (ed - sd).num_days() <= 120,
-                            _ => false,
-                        }
-                    }
-                    // Instant facts (no start) are balance-sheet items — allow them
-                    (None, Some(_)) => true,
-                    _ => false,
-                };
-                if !within_quarter {
-                    continue;
-                }
-            }
-        }
-
-        let end_str = entry["end"].as_str().unwrap_or("");
-        let Ok(end) = NaiveDate::parse_from_str(end_str, "%Y-%m-%d") else {
-            continue;
-        };
-        let val = match &entry["val"] {
-            serde_json::Value::Number(n) => match n.as_f64() {
-                Some(f) => f,
-                None => continue,
-            },
-            _ => continue,
-        };
-        let fy = entry["fy"].as_u64().unwrap_or(0) as u16;
-        let fp = entry["fp"].as_str().unwrap_or("").to_string();
-        let accn = entry["accn"].as_str().unwrap_or("").to_string();
-
-        let existing = map.entry(end).or_insert_with(|| Fact {
-            end,
-            fy,
-            fp: fp.clone(),
-            val,
-            accn: accn.clone(),
-        });
-
-        // Keep the entry with the lexicographically greater accession number (more recent)
-        if accn > existing.accn {
-            *existing = Fact {
-                end,
-                fy,
-                fp,
-                val,
-                accn,
-            };
-        }
-    }
-
-    map.into_values().collect()
-}
-
-// ── Form 4 XML ───────────────────────────────────────────────────────────────
 
 /// Parse Form 4 XML text. Returns all non-derivative transactions found.
 pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
@@ -193,10 +26,8 @@ pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
         .trim();
 
     let doc = roxmltree::Document::parse(xml_body).context("parsing Form 4 XML")?;
-
     let root = doc.root_element();
 
-    // Reporting owner info
     let insider_name = find_text(&root, "rptOwnerName").unwrap_or_default();
     let is_officer = find_text(&root, "isOfficer")
         .map(|s| s.trim() == "1")
@@ -223,7 +54,6 @@ pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
 
     let mut txs = vec![];
 
-    // Iterate nonDerivativeTransaction nodes
     for node in root.descendants() {
         if node.tag_name().name() != "nonDerivativeTransaction" {
             continue;
@@ -236,7 +66,6 @@ pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
             continue;
         };
 
-        // transactionCode is nested inside <transactionCoding>
         let code = find_child_text(&node, "transactionCode").unwrap_or_default();
 
         let shares = find_child_text(&node, "transactionShares")
@@ -267,6 +96,54 @@ pub fn parse_form4_xml(xml: &str) -> anyhow::Result<Vec<RawInsiderTx>> {
     Ok(txs)
 }
 
+/// Scan the Markdown-rendered cover page for Exhibit 99.1 / 99.2 filenames.
+///
+/// `htmd` converts `<a href="q4fy26pr.htm">…</a>` to `[…](q4fy26pr.htm)`, so
+/// after rendering we just need to find the last occurrence of "99.1" / "99.2"
+/// (last = exhibit table at the end, not the first body-text reference) and
+/// then grab the first `](*.htm)` link that follows within 600 chars.
+pub fn extract_exhibit_filenames(markdown: &str) -> (Option<String>, Option<String>) {
+    let ex991 = find_exhibit_filename(markdown, "99.1");
+    let ex992 = find_exhibit_filename(markdown, "99.2");
+    (ex991, ex992)
+}
+
+fn find_exhibit_filename(markdown: &str, marker: &str) -> Option<String> {
+    // Use rfind so we land in the exhibit table (end of doc), not the first
+    // body-text mention like "attached as Exhibit 99.1".
+    let pos = markdown.rfind(marker)?;
+    // Collect by chars (not bytes) to avoid slicing inside a multi-byte codepoint.
+    let window: String = markdown[pos..].chars().take(600).collect();
+    let link_start = window.find("](")?;
+    let after = &window[link_start + 2..];
+    let end = after.find(')')?;
+    let href = &after[..end];
+    let lower = href.to_lowercase();
+    if lower.ends_with(".htm") || lower.ends_with(".html") {
+        Some(href.to_string())
+    } else {
+        None
+    }
+}
+
+/// Convert an HTML filing to Markdown, falling back to plain-text tag stripping on failure.
+pub fn html_to_markdown(html: &str) -> String {
+    htmd::convert(html).unwrap_or_else(|_| {
+        // Fallback: naive tag stripper
+        let mut out = String::new();
+        let mut in_tag = false;
+        for ch in html.chars() {
+            match ch {
+                '<' => in_tag = true,
+                '>' => in_tag = false,
+                c if !in_tag => out.push(c),
+                _ => {}
+            }
+        }
+        out.split_whitespace().collect::<Vec<_>>().join(" ")
+    })
+}
+
 fn find_text(root: &roxmltree::Node, tag: &str) -> Option<String> {
     root.descendants()
         .find(|n| n.tag_name().name() == tag)
@@ -276,7 +153,6 @@ fn find_text(root: &roxmltree::Node, tag: &str) -> Option<String> {
 
 fn find_child_text(node: &roxmltree::Node, tag: &str) -> Option<String> {
     let found = node.descendants().find(|n| n.tag_name().name() == tag)?;
-    // Form 4 XML wraps most values in a nested <value> element; fall back to direct text
     found
         .children()
         .find(|n| n.tag_name().name() == "value")

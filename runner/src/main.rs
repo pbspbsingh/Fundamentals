@@ -1,6 +1,3 @@
-use model::Ticker;
-use scraper::FinancialScraper;
-use std::time::Duration;
 use time::macros::format_description;
 use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
@@ -25,24 +22,25 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
-    info!("Starting the app with config:\n{:#?}", config::config());
-    let scraper = FinancialScraper::new().await?;
-    match scraper
-        .fetch_financials(&Ticker::new("NASDAQ", "NVDA"))
-        .await
-    {
-        Err(e) => {
-            error!("Error fetching financials: {}", e);
-        }
-        Ok(financials) => {
-            tokio::fs::write(
-                "financials.json",
-                serde_json::to_string_pretty(&financials)?,
-            )
-            .await?;
+    let ticker = "NVDA";
+
+    info!("Fetching 8-K documents for {ticker}...");
+    match edgar::fetch_documents(ticker).await {
+        Err(e) => error!("fetch_documents failed: {e:#}"),
+        Ok(docs) => {
+            info!("Got {} documents", docs.len());
+            tokio::fs::write("documents.json", serde_json::to_string_pretty(&docs)?).await?;
         }
     }
-    drop(scraper);
-    tokio::time::sleep(Duration::from_secs(1)).await;
+
+    info!("Fetching insider transactions for {ticker}...");
+    match edgar::fetch_insider_transactions(ticker).await {
+        Err(e) => error!("fetch_insider_transactions failed: {e:#}"),
+        Ok(txs) => {
+            info!("Got {} insider transactions", txs.len());
+            tokio::fs::write("insider.json", serde_json::to_string_pretty(&txs)?).await?;
+        }
+    }
+
     Ok(())
 }

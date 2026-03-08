@@ -50,14 +50,6 @@ impl EdgarClient {
         bail!("ticker '{ticker}' not found in SEC company_tickers.json")
     }
 
-    /// Fetch `{BASE_URL}/api/xbrl/companyfacts/{cik}.json`
-    pub async fn fetch_company_facts(&self, cik: &str) -> anyhow::Result<serde_json::Value> {
-        let url = format!("{BASE_URL}/api/xbrl/companyfacts/{cik}.json");
-        self.get_json(&url)
-            .await
-            .with_context(|| format!("fetching company facts for {cik}"))
-    }
-
     /// Fetch `{BASE_URL}/submissions/{cik}.json`
     pub async fn fetch_submissions(&self, cik: &str) -> anyhow::Result<serde_json::Value> {
         let url = format!("{BASE_URL}/submissions/{cik}.json");
@@ -66,19 +58,18 @@ impl EdgarClient {
             .with_context(|| format!("fetching submissions for {cik}"))
     }
 
-    /// Fetch a Form 4 primary document.
-    /// URL: https://www.sec.gov/Archives/edgar/data/{raw_cik}/{accn_no_dashes}/{primary_doc}
-    pub async fn fetch_form4_xml(
+    /// Fetch any EDGAR filing document by raw (numeric) CIK, accession number, and filename.
+    /// URL: https://www.sec.gov/Archives/edgar/data/{raw_cik}/{accn_no_dashes}/{filename}
+    pub async fn fetch_filing_text(
         &self,
-        cik: &str,
+        raw_cik: &str,
         accession: &str,
-        primary_doc: &str,
+        filename: &str,
     ) -> anyhow::Result<String> {
-        let raw_cik = cik.trim_start_matches("CIK").trim_start_matches('0');
         let accession_no_dashes = accession.replace('-', "");
-        // primaryDocument may include a stylesheet subdirectory prefix like "xslF345X05/".
-        // The raw XML always lives at the root of the accession folder.
-        let doc_name = primary_doc.rsplit('/').next().unwrap_or(primary_doc);
+        // Some primaryDocument paths include a stylesheet prefix (e.g. "xslF345X05/foo.xml").
+        // The actual document always lives at the root of the accession folder.
+        let doc_name = filename.rsplit('/').next().unwrap_or(filename);
         let url = format!(
             "https://www.sec.gov/Archives/edgar/data/{raw_cik}/{accession_no_dashes}/{doc_name}"
         );
@@ -89,10 +80,10 @@ impl EdgarClient {
             .get(&url)
             .send()
             .await
-            .with_context(|| format!("fetching Form 4 at {url}"))?;
+            .with_context(|| format!("fetching filing at {url}"))?;
 
         if !resp.status().is_success() {
-            bail!("Form 4 fetch failed: HTTP {}", resp.status());
+            bail!("Filing fetch failed: HTTP {} for {url}", resp.status());
         }
         Ok(resp.text().await?)
     }
