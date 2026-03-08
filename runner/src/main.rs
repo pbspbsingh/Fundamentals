@@ -28,7 +28,7 @@ async fn async_main() -> anyhow::Result<()> {
     info!("Starting the app with config:\n{:#?}", config::config());
     let scraper = FinancialScraper::new().await?;
     match scraper
-        .fetch_financials(&Ticker::new("NASDAQ", "PLTR"))
+        .fetch_financials(&Ticker::new("NASDAQ", "NVDA"))
         .await
     {
         Err(e) => {

@@ -70,46 +70,6 @@ pub(super) fn parse_pct(s: &str) -> Option<f64> {
     Some((n / 100.0 * 1e5).round() / 1e5)
 }
 
-/// Parse an earnings column label to the last day of that fiscal period.
-///
-/// Supported formats:
-/// - `"Q1 '21"` → 2021-03-31  (Q1→Mar, Q2→Jun, Q3→Sep, Q4→Dec)
-/// - `"FY '21"` or `"2021"` → 2021-12-31
-///
-/// Note: these are calendar-quarter end dates used as approximations; actual
-/// fiscal period ends may differ by company.
-pub(super) fn parse_earnings_label(s: &str) -> Option<NaiveDate> {
-    let s = s.trim();
-    let mut parts = s.split_whitespace();
-    let first = parts.next()?;
-    let second = parts.next();
-
-    if let Some(q) = first.strip_prefix('Q') {
-        // Quarterly: "Q1 '21"
-        let quarter: u32 = q.parse().ok()?;
-        let y_str = second?.trim_start_matches('\'');
-        let year_short: i32 = y_str.parse().ok()?;
-        let year = 2000 + year_short;
-        let month = match quarter {
-            1 => 3,
-            2 => 6,
-            3 => 9,
-            4 => 12,
-            _ => return None,
-        };
-        last_day_of_month(year, month)
-    } else if first == "FY" {
-        // Annual: "FY '21"
-        let y_str = second?.trim_start_matches('\'');
-        let year_short: i32 = y_str.parse().ok()?;
-        last_day_of_month(2000 + year_short, 12)
-    } else {
-        // Plain year: "2021"
-        let year: i32 = first.parse().ok()?;
-        last_day_of_month(year, 12)
-    }
-}
-
 fn last_day_of_month(year: i32, month: u32) -> Option<NaiveDate> {
     let first_next = if month == 12 {
         NaiveDate::from_ymd_opt(year + 1, 1, 1)?

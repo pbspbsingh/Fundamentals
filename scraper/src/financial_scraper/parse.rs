@@ -5,7 +5,7 @@ use model::financials::{
 
 use super::FinancialScraper;
 use super::table::{TableData, collect_entries, find_ttm_col};
-use super::utils::{parse_earnings_label, parse_pct, parse_value};
+use super::utils::{parse_pct, parse_value};
 
 impl FinancialScraper {
     pub(super) async fn parse_income_statement(
@@ -57,7 +57,7 @@ impl FinancialScraper {
         let td = TableData(&rows);
         let (i, period_end, label) = find_ttm_col(&columns, &td,"Total revenue")?;
         Ok(IncomeStatementEntry {
-            period: Period { label, period_end, periodicity: Periodicity::Annual },
+            period: Period { label, period_end: Some(period_end), periodicity: Periodicity::Annual },
             total_revenue: td.val(i, "Total revenue"),
             total_revenue_yoy: td.chg(i, "Total revenue"),
             cost_of_goods_sold: td.val(i, "Cost of goods sold"),
@@ -140,7 +140,7 @@ impl FinancialScraper {
         let td = TableData(&rows);
         let (i, period_end, label) = find_ttm_col(&columns, &td,"Cash from operating activities")?;
         Ok(CashFlowEntry {
-            period: Period { label, period_end, periodicity: Periodicity::Annual },
+            period: Period { label, period_end: Some(period_end), periodicity: Periodicity::Annual },
             operating_cash_flow: td.val(i, "Cash from operating activities"),
             operating_cash_flow_yoy: td.chg(i, "Cash from operating activities"),
             investing_cash_flow: td.val(i, "Cash from investing activities"),
@@ -222,11 +222,6 @@ impl FinancialScraper {
                 Some(s) if !s.is_empty() => s,
                 _ => continue,
             };
-            let period_end = match parse_earnings_label(label_str) {
-                Some(d) => d,
-                None => continue,
-            };
-
             let eps_reported = parse_value(eps_rows["Reported"][i]["value"].as_str().unwrap_or(""));
             let eps_estimate = parse_value(eps_rows["Estimate"][i]["value"].as_str().unwrap_or(""));
             let eps_surprise = parse_pct(eps_rows["Surprise"][i]["value"].as_str().unwrap_or(""));
@@ -245,7 +240,7 @@ impl FinancialScraper {
             }
 
             entries.push(EarningsEntry {
-                period: Period { label: label_str.to_string(), period_end, periodicity },
+                period: Period { label: label_str.to_string(), period_end: None, periodicity },
                 eps_reported,
                 eps_estimate,
                 eps_surprise,
@@ -255,7 +250,6 @@ impl FinancialScraper {
             });
         }
 
-        entries.sort_by_key(|e| e.period.period_end);
         Ok(entries)
     }
 }

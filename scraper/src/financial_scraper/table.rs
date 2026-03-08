@@ -1,8 +1,7 @@
 use anyhow::Context;
 use chrono::{Local, NaiveDate};
 use model::financials::{
-    BalanceSheetEntry, CashFlowEntry, EarningsEntry, IncomeStatementEntry, Period, Periodicity,
-    StatisticsEntry,
+    BalanceSheetEntry, CashFlowEntry, IncomeStatementEntry, Period, Periodicity, StatisticsEntry,
 };
 
 use super::utils::{parse_month_year, parse_pct, parse_value, round3};
@@ -42,7 +41,7 @@ pub(super) fn collect_entries<T: HasPeriodEnd>(
                 return None;
             }
             let label = col["label"].as_str().unwrap_or("").to_string();
-            Some(build(td, i, Period { label, period_end: date, periodicity }))
+            Some(build(td, i, Period { label, period_end: Some(date), periodicity }))
         })
         .collect();
     entries.sort_by_key(|e| e.period_end());
@@ -78,17 +77,14 @@ pub(super) trait HasPeriodEnd {
 }
 
 impl HasPeriodEnd for IncomeStatementEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end }
+    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
 }
 impl HasPeriodEnd for BalanceSheetEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end }
+    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
 }
 impl HasPeriodEnd for CashFlowEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end }
+    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
 }
 impl HasPeriodEnd for StatisticsEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end }
-}
-impl HasPeriodEnd for EarningsEntry {
-    fn period_end(&self) -> NaiveDate { self.period.period_end }
+    fn period_end(&self) -> NaiveDate { self.period.period_end.unwrap_or_default() }
 }

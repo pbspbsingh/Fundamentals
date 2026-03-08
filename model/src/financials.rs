@@ -13,7 +13,8 @@ pub enum Periodicity {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Period {
     pub label: String,
-    pub period_end: NaiveDate,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub period_end: Option<NaiveDate>,
     pub periodicity: Periodicity,
 }
 
