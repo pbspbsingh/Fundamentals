@@ -1,4 +1,4 @@
-use chrono::{DateTime, Local, NaiveDate};
+use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 
 // ── Shared ────────────────────────────────────────────────────────────────────
@@ -102,13 +102,68 @@ pub struct CashFlowEntry {
     pub free_cash_flow_yoy: Option<f64>,
 }
 
+// ── Statistics ────────────────────────────────────────────────────────────────
+// Margin/return fields are stored as fractions (0.8167 for 81.67%).
+// Ratio/valuation fields are stored as raw multiples (e.g. P/E = 181.61).
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StatisticsEntry {
+    pub period: Period,
+
+    // Shares & company info
+    pub shares_outstanding: Option<f64>,
+    pub free_float: Option<f64>,
+    pub employee_count: Option<f64>,
+    pub shareholder_count: Option<f64>,
+
+    // Valuation
+    pub enterprise_value: Option<f64>,
+    pub pe_ratio: Option<f64>,
+    pub ps_ratio: Option<f64>,
+    pub pb_ratio: Option<f64>,
+    pub pcf_ratio: Option<f64>,
+    pub ev_to_ebitda: Option<f64>,
+
+    // Profitability (0–1 fractions)
+    pub gross_margin: Option<f64>,
+    pub operating_margin: Option<f64>,
+    pub ebitda_margin: Option<f64>,
+    pub net_margin: Option<f64>,
+    pub return_on_assets: Option<f64>,
+    pub return_on_equity: Option<f64>,
+    pub return_on_invested_capital: Option<f64>,
+
+    // Liquidity & Leverage
+    pub current_ratio: Option<f64>,
+    pub quick_ratio: Option<f64>,
+    pub debt_to_equity: Option<f64>,
+    pub debt_to_assets: Option<f64>,
+    pub lt_debt_to_equity: Option<f64>,
+    pub lt_debt_to_assets: Option<f64>,
+    pub asset_turnover: Option<f64>,
+    pub inventory_turnover: Option<f64>,
+
+    // Per Share
+    pub revenue_per_share: Option<f64>,
+    pub ocf_per_share: Option<f64>,
+    pub fcf_per_share: Option<f64>,
+    pub ebit_per_share: Option<f64>,
+    pub ebitda_per_share: Option<f64>,
+    pub book_value_per_share: Option<f64>,
+    pub tangible_book_value_per_share: Option<f64>,
+    pub net_current_asset_value_per_share: Option<f64>,
+    pub working_capital_per_share: Option<f64>,
+    pub cash_per_share: Option<f64>,
+    pub total_debt_per_share: Option<f64>,
+    pub capex_per_share: Option<f64>,
+}
+
 // ── Top-level ─────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingViewFinancials {
     pub ticker: String,
     pub currency: String,
-    pub scraped_at: DateTime<Local>,
 
     pub quarterly_income: Vec<IncomeStatementEntry>,
     pub annual_income: Vec<IncomeStatementEntry>,
@@ -121,6 +176,9 @@ pub struct TradingViewFinancials {
 
     pub ttm_income: Option<IncomeStatementEntry>,
     pub ttm_cash_flow: Option<CashFlowEntry>,
+
+    pub quarterly_statistics: Vec<StatisticsEntry>,
+    pub annual_statistics: Vec<StatisticsEntry>,
 }
 
 // ── Percentage serde ───────────────────────────────────────────────────────────

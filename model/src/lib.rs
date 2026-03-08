@@ -1,4 +1,4 @@
-pub mod statements;
+pub mod financials;
 
 use std::fmt::{Display, Formatter};
 
