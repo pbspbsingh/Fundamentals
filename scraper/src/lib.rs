@@ -9,7 +9,7 @@ pub use sentiment_scraper::SentimentScraper;
 
 pub const TV_HOME: &str = "https://www.tradingview.com";
 
-async fn launch_browser() -> anyhow::Result<Browser> {
+pub async fn launch_browser() -> anyhow::Result<Browser> {
     let cfg = config::config();
     let browser = ChromeDriverConfig::new(&cfg.chrome_path)
         .user_data_dir(&cfg.user_data_dir)

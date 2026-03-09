@@ -13,6 +13,8 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "time"] }
 time = { version = "0.3", features = ["local-offset", "macros"] }
 
 tokio = { workspace = true }
+chrome_driver = { workspace = true }
+
 
 config = { path = "../config" }
 scraper = { path = "../scraper" }

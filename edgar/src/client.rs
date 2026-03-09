@@ -14,6 +14,13 @@ pub struct EdgarClient {
     pub(crate) http: reqwest::Client,
 }
 
+impl Clone for EdgarClient {
+    fn clone(&self) -> Self {
+        // reqwest::Client is cheap to clone — it shares the underlying connection pool.
+        EdgarClient { http: self.http.clone() }
+    }
+}
+
 impl EdgarClient {
     pub fn new() -> anyhow::Result<Self> {
         let http = reqwest::Client::builder()
@@ -118,6 +125,76 @@ impl EdgarClient {
         }
 
         Ok(raw)
+    }
+
+    /// Search EDGAR EFTS full-text index for 13F-HR filings (with pagination offset).
+    /// `from` is the 0-based result offset for pagination (results are relevance-sorted).
+    pub async fn search_efts_13f_paged(
+        &self,
+        query: &str,
+        from: usize,
+        size: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let q = query.replace(' ', "%20");
+        let url = format!(
+            "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms=13F-HR\
+             &from={from}&size={size}"
+        );
+        self.get_json(&url).await
+    }
+
+    /// Search EDGAR EFTS full-text index for 13F-HR filings.
+    /// `query` is wrapped in double-quotes for an exact-phrase match (e.g. a CUSIP or company name).
+    /// Returns up to `size` results filed within the last `days_back` days.
+    pub async fn search_efts_13f(
+        &self,
+        query: &str,
+        days_back: u32,
+        size: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let startdt = (chrono::Utc::now().date_naive()
+            - chrono::Duration::days(days_back as i64))
+        .format("%Y-%m-%d")
+        .to_string();
+        let q = query.replace(' ', "%20");
+        let url = format!(
+            "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms=13F-HR\
+             &dateRange=custom&startdt={startdt}&from=0&size={size}"
+        );
+        self.get_json(&url).await
+    }
+
+    /// Search EDGAR EFTS full-text index for any form type.
+    /// Used to find old XBRL instance documents that contain `EntityCUSIP` as plain XML text.
+    pub async fn search_efts_any(
+        &self,
+        query: &str,
+        forms: &str,
+        startdt: &str,
+        enddt: &str,
+        size: usize,
+    ) -> anyhow::Result<serde_json::Value> {
+        let q = query.replace(' ', "%20");
+        let url = format!(
+            "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms={forms}\
+             &dateRange=custom&startdt={startdt}&enddt={enddt}&from=0&size={size}"
+        );
+        self.get_json(&url).await
+    }
+
+    /// Fetch raw text from any URL (with rate limiting).
+    pub async fn fetch_text(&self, url: &str) -> anyhow::Result<String> {
+        sleep(RATE_LIMIT_DELAY).await;
+        let resp = self
+            .http
+            .get(url)
+            .send()
+            .await
+            .with_context(|| format!("GET {url}"))?;
+        if !resp.status().is_success() {
+            bail!("HTTP {} for {url}", resp.status());
+        }
+        Ok(resp.text().await?)
     }
 
     pub(crate) async fn get_json<T: DeserializeOwned>(&self, url: &str) -> anyhow::Result<T> {

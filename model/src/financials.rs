@@ -184,7 +184,6 @@ pub struct EarningsEntry {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TradingViewFinancials {
-    pub ticker: String,
     pub currency: String,
 
     pub quarterly_income: Vec<IncomeStatementEntry>,

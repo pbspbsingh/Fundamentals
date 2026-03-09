@@ -1,41 +1,22 @@
 use anyhow::Context;
-use chrome_driver::{Browser, Page, Sleepable};
+use chrome_driver::{Page, Sleepable};
 use chrono::Utc;
 use model::Ticker;
 use model::sentiment::{Forecast, NewsHeadline, StockSentiment};
+use std::sync::Arc;
 use tracing::info;
 
 pub struct SentimentScraper {
-    browser: Option<Browser>,
-    page: Option<Page>,
-}
-
-impl Drop for SentimentScraper {
-    fn drop(&mut self) {
-        if let Some(browser) = self.browser.take()
-            && let Some(mut page) = self.page.take()
-        {
-            tokio::task::spawn(async move {
-                page.close_me().await;
-                drop(browser);
-            });
-        }
-    }
+    page: Arc<Page>,
 }
 
 impl SentimentScraper {
-    pub async fn new() -> anyhow::Result<Self> {
-        let browser = super::launch_browser().await?;
-        let page = browser.new_page(super::TV_HOME).await?;
-        page.wait_for_navigation().await?.sleep().await;
-        Ok(Self {
-            browser: Some(browser),
-            page: Some(page),
-        })
+    pub async fn new(page: Arc<Page>) -> Self {
+        Self { page }
     }
 
     fn page(&self) -> &Page {
-        self.page.as_ref().unwrap()
+        &self.page
     }
 
     pub async fn scrape(&self, ticker: &Ticker) -> anyhow::Result<StockSentiment> {
@@ -109,7 +90,6 @@ impl SentimentScraper {
         );
 
         Ok(StockSentiment {
-            ticker: ticker.ticker.clone(),
             sector,
             industry,
             about,

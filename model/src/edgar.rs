@@ -34,3 +34,14 @@ pub struct InsiderTransaction {
     /// Computed: shares * price_per_share
     pub total_value: Option<f64>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InstitutionalHolder {
+    pub institution_name: String,
+    /// Number of shares held
+    pub shares: i64,
+    /// Market value in USD (as reported in 13F-HR)
+    pub market_value_usd: i64,
+    /// End-of-period date for the quarter reported
+    pub reported_date: NaiveDate,
+}

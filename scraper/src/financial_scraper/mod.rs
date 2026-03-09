@@ -4,38 +4,19 @@ mod utils;
 
 use crate::TV_HOME;
 use anyhow::Context;
-use chrome_driver::{Browser, Page, Sleepable};
+use chrome_driver::{Page, Sleepable};
 use model::Ticker;
 use model::financials::TradingViewFinancials;
+use std::sync::Arc;
 use tracing::info;
 
 pub struct FinancialScraper {
-    browser: Option<Browser>,
-    page: Option<Page>,
-}
-
-impl Drop for FinancialScraper {
-    fn drop(&mut self) {
-        if let Some(browser) = self.browser.take()
-            && let Some(mut page) = self.page.take()
-        {
-            tokio::task::spawn(async move {
-                page.close_me().await;
-                drop(browser);
-            });
-        }
-    }
+    page: Arc<Page>,
 }
 
 impl FinancialScraper {
-    pub async fn new() -> anyhow::Result<Self> {
-        let browser = super::launch_browser().await?;
-        let page = browser.new_page(TV_HOME).await?;
-        page.wait_for_navigation().await?.sleep().await;
-        Ok(Self {
-            browser: Some(browser),
-            page: Some(page),
-        })
+    pub async fn new(page: Arc<Page>) -> Self {
+        Self { page }
     }
 
     pub async fn fetch_financials(&self, ticker: &Ticker) -> anyhow::Result<TradingViewFinancials> {
@@ -128,7 +109,6 @@ impl FinancialScraper {
         let annual_earnings = self.parse_earnings(false).await?;
 
         Ok(TradingViewFinancials {
-            ticker: ticker.ticker.clone(),
             currency,
 
             quarterly_income,
@@ -152,7 +132,7 @@ impl FinancialScraper {
     }
 
     fn page(&self) -> &Page {
-        self.page.as_ref().unwrap()
+        self.page.as_ref()
     }
 
     async fn currency(&self) -> anyhow::Result<String> {

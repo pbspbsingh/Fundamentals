@@ -3,7 +3,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StockSentiment {
-    pub ticker: String,
     pub sector: String,
     pub industry: String,
     pub about: String,

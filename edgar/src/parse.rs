@@ -1,5 +1,6 @@
 use anyhow::Context;
 use chrono::NaiveDate;
+use model::edgar::InstitutionalHolder;
 
 /// A parsed Form 4 non-derivative transaction.
 #[derive(Debug, Clone)]
@@ -142,6 +143,156 @@ pub fn html_to_markdown(html: &str) -> String {
         }
         out.split_whitespace().collect::<Vec<_>>().join(" ")
     })
+}
+
+/// Extract the 9-character CUSIP from an SEC filing document (10-K inline XBRL or plain HTML).
+///
+/// EDGAR 10-K inline XBRL files contain a tag like:
+/// `<ix:nonNumeric name="dei:EntityCUSIP" ...>67066G104</ix:nonNumeric>`
+/// We find the `EntityCUSIP` marker then grab the first 9-character alphanumeric run after it.
+pub fn extract_cusip(html: &str) -> Option<String> {
+    let pos = html.find("EntityCUSIP")?;
+    let after = &html[pos + "EntityCUSIP".len()..];
+    // Scan up to 500 bytes ahead for the first 9-char alphanumeric run (the CUSIP itself).
+    // Tag attribute values (contextRef, id, etc.) are typically shorter or longer than 9 chars.
+    let window = &after[..after.len().min(500)];
+    let mut run_start: Option<usize> = None;
+    let mut run_len = 0usize;
+    for (i, b) in window.bytes().enumerate() {
+        if b.is_ascii_alphanumeric() {
+            if run_start.is_none() {
+                run_start = Some(i);
+            }
+            run_len += 1;
+        } else {
+            if run_len == 9 {
+                let s = run_start.unwrap();
+                return Some(window[s..s + 9].to_uppercase());
+            }
+            run_start = None;
+            run_len = 0;
+        }
+    }
+    if run_len == 9 {
+        let s = run_start.unwrap();
+        return Some(window[s..s + 9].to_uppercase());
+    }
+    None
+}
+
+/// Parse an information table XML from a 13F-HR filing and return the holding for the
+/// target company, if present.
+///
+/// When `match_by_cusip` is `true`, `match_key` is compared against the row's `<cusip>` field
+/// (exact, case-insensitive).  When `false`, it is checked as a substring of `<nameOfIssuer>`
+/// (case-insensitive) — used as a fallback when the CUSIP is unknown.
+///
+/// Shares/value are summed across multiple rows with the same key (some filers split entries).
+pub fn find_holding_in_info_table(
+    xml: &str,
+    match_key: &str,
+    match_by_cusip: bool,
+    institution_name: &str,
+    reported_date: NaiveDate,
+) -> Option<InstitutionalHolder> {
+    let doc = roxmltree::Document::parse(xml).ok()?;
+    let root = doc.root_element();
+
+    let key_upper = match_key.to_uppercase();
+    let mut total_shares: i64 = 0;
+    let mut total_value: i64 = 0;
+    let mut found = false;
+
+    for node in root.descendants() {
+        if !node.tag_name().name().eq_ignore_ascii_case("infoTable") {
+            continue;
+        }
+
+        let row_matches = if match_by_cusip {
+            node.descendants()
+                .find(|n| n.tag_name().name().eq_ignore_ascii_case("cusip"))
+                .and_then(|n| n.text())
+                .map(|s| s.trim().to_uppercase() == key_upper)
+                .unwrap_or(false)
+        } else {
+            node.descendants()
+                .find(|n| n.tag_name().name().eq_ignore_ascii_case("nameOfIssuer"))
+                .and_then(|n| n.text())
+                .map(|s| s.to_uppercase().contains(&key_upper))
+                .unwrap_or(false)
+        };
+
+        if !row_matches {
+            continue;
+        }
+        found = true;
+
+        let shares: i64 = node
+            .descendants()
+            .find(|n| n.tag_name().name().eq_ignore_ascii_case("sshPrnamt"))
+            .and_then(|n| n.text())
+            .and_then(|s| s.trim().replace(',', "").parse::<i64>().ok())
+            .unwrap_or(0);
+
+        let value: i64 = node
+            .descendants()
+            .find(|n| n.tag_name().name().eq_ignore_ascii_case("value"))
+            .and_then(|n| n.text())
+            .and_then(|s| s.trim().replace(',', "").parse::<i64>().ok())
+            .unwrap_or(0);
+
+        total_shares += shares;
+        total_value += value;
+    }
+
+    if found && total_shares > 0 {
+        Some(InstitutionalHolder {
+            institution_name: institution_name.to_string(),
+            shares: total_shares,
+            market_value_usd: total_value,
+            reported_date,
+        })
+    } else {
+        None
+    }
+}
+
+/// Scan a 13F information table XML and return the CUSIP of the first row whose
+/// `nameOfIssuer` contains `company_name_keyword` (case-insensitive substring match).
+///
+/// Used to bootstrap a CUSIP when it cannot be found in the company's own SEC filings.
+pub fn extract_cusip_from_info_table(xml: &str, company_name_keyword: &str) -> Option<String> {
+    let doc = roxmltree::Document::parse(xml).ok()?;
+    let root = doc.root_element();
+    let keyword = company_name_keyword.to_uppercase();
+    // Use first word of name for flexible matching ("NVIDIA" matches "NVIDIA CORP" etc.)
+    let first_word: &str = keyword.split_whitespace().next().unwrap_or(&keyword);
+
+    for node in root.descendants() {
+        if !node.tag_name().name().eq_ignore_ascii_case("infoTable") {
+            continue;
+        }
+        let issuer = node
+            .descendants()
+            .find(|n| n.tag_name().name().eq_ignore_ascii_case("nameOfIssuer"))
+            .and_then(|n| n.text())
+            .map(|s| s.to_uppercase())
+            .unwrap_or_default();
+        if !issuer.contains(first_word) {
+            continue;
+        }
+        if let Some(cusip) = node
+            .descendants()
+            .find(|n| n.tag_name().name().eq_ignore_ascii_case("cusip"))
+            .and_then(|n| n.text())
+            .map(|s| s.trim().to_uppercase())
+        {
+            if cusip.len() == 9 {
+                return Some(cusip);
+            }
+        }
+    }
+    None
 }
 
 fn find_text(root: &roxmltree::Node, tag: &str) -> Option<String> {
