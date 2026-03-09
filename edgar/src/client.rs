@@ -16,7 +16,6 @@ pub struct EdgarClient {
 
 impl Clone for EdgarClient {
     fn clone(&self) -> Self {
-        // reqwest::Client is cheap to clone — it shares the underlying connection pool.
         EdgarClient { http: self.http.clone() }
     }
 }

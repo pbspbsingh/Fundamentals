@@ -22,7 +22,6 @@ pub struct StockFundamentals {
     pub financials: TradingViewFinancials,
     pub documents: Vec<Document>,
     pub insider_transaction: Vec<InsiderTransaction>,
-    pub institutional_holders: Vec<InstitutionalHolder>,
     pub last_updated: DateTime<Utc>,
 }
 

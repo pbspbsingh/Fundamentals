@@ -20,3 +20,4 @@ config = { path = "../config" }
 scraper = { path = "../scraper" }
 model = { path = "../model" }
 edgar = { path = "../edgar" }
+chrono = { workspace = true }
