@@ -1,11 +1,8 @@
-
-
-use time::macros::format_description;
-use tracing::{error, info};
-use tracing_subscriber::EnvFilter;
-use tracing_subscriber::fmt::time::OffsetTime;
 use model::Ticker;
 use runner::fundamentals_fetcher::FundamentalsFetcher;
+use time::macros::format_description;
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::fmt::time::OffsetTime;
 
 fn main() -> anyhow::Result<()> {
     let offset = time::UtcOffset::current_local_offset().unwrap_or(time::UtcOffset::UTC);
@@ -27,7 +24,13 @@ fn main() -> anyhow::Result<()> {
 
 async fn async_main() -> anyhow::Result<()> {
     let fetcher = FundamentalsFetcher::new().await?;
-    let fundamentals = fetcher.fetch_fundamentals(&Ticker::new("NASDAQ", "TSLA")).await?;
-    tokio::fs::write("fundamentals.json", serde_json::to_string_pretty(&fundamentals)?).await?;
+    let fundamentals = fetcher
+        .fetch_fundamentals(&Ticker::new("NYSE", "TE"))
+        .await?;
+    tokio::fs::write(
+        "fundamentals.json",
+        serde_json::to_string_pretty(&fundamentals)?,
+    )
+    .await?;
     Ok(())
 }

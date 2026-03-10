@@ -110,30 +110,77 @@ async fn fetch_exhibit(
 /// filename discovery (needed for filers with non-standard XML filenames like Vanguard).
 const MAJOR_INST_PATTERNS: &[&str] = &[
     // Index fund giants
-    "VANGUARD", "BLACKROCK", "BLACK ROCK", "STATE STREET", "GEODE CAPITAL",
+    "VANGUARD",
+    "BLACKROCK",
+    "BLACK ROCK",
+    "STATE STREET",
+    "GEODE CAPITAL",
     // Fidelity files as FMR LLC
-    "FMR LLC", "FIDELITY MANAGEMENT", "FIDELITY INVESTMENTS",
+    "FMR LLC",
+    "FIDELITY MANAGEMENT",
+    "FIDELITY INVESTMENTS",
     // Capital Group
-    "CAPITAL RESEARCH", "CAPITAL WORLD",
+    "CAPITAL RESEARCH",
+    "CAPITAL WORLD",
     // Banks / prime brokers
-    "JPMORGAN", "JP MORGAN", "BANK OF AMERICA", "GOLDMAN SACHS",
-    "MORGAN STANLEY", "CITIGROUP", "WELLS FARGO", "DEUTSCHE BANK", "UBS GROUP",
+    "JPMORGAN",
+    "JP MORGAN",
+    "BANK OF AMERICA",
+    "GOLDMAN SACHS",
+    "MORGAN STANLEY",
+    "CITIGROUP",
+    "WELLS FARGO",
+    "DEUTSCHE BANK",
+    "UBS GROUP",
     // Asset managers
-    "NORGES BANK", "T. ROWE PRICE", "T ROWE PRICE", "PRICE T ROWE",
-    "WELLINGTON MANAGEMENT", "INVESCO", "DIMENSIONAL FUND", "NORTHERN TRUST",
-    "DODGE & COX", "CHARLES SCHWAB", "COHEN & STEERS", "AMERICAN CENTURY",
-    "NUVEEN", "PRINCIPAL FINANCIAL", "PARNASSUS", "CAUSEWAY CAPITAL",
-    "ARTISAN PARTNERS", "BAILIE GIFFORD", "BAILLIE GIFFORD", "MFS INVESTMENT",
-    "COLUMBIA THREADNEEDLE", "COLUMBIA MANAGEMENT", "NEUBERGER BERMAN",
-    "AQR CAPITAL", "MANNING & NAPIER",
+    "NORGES BANK",
+    "T. ROWE PRICE",
+    "T ROWE PRICE",
+    "PRICE T ROWE",
+    "WELLINGTON MANAGEMENT",
+    "INVESCO",
+    "DIMENSIONAL FUND",
+    "NORTHERN TRUST",
+    "DODGE & COX",
+    "CHARLES SCHWAB",
+    "COHEN & STEERS",
+    "AMERICAN CENTURY",
+    "NUVEEN",
+    "PRINCIPAL FINANCIAL",
+    "PARNASSUS",
+    "CAUSEWAY CAPITAL",
+    "ARTISAN PARTNERS",
+    "BAILIE GIFFORD",
+    "BAILLIE GIFFORD",
+    "MFS INVESTMENT",
+    "COLUMBIA THREADNEEDLE",
+    "COLUMBIA MANAGEMENT",
+    "NEUBERGER BERMAN",
+    "AQR CAPITAL",
+    "MANNING & NAPIER",
     // Hedge / quant funds
-    "CITADEL ADVISORS", "MILLENNIUM MANAGEMENT", "JANE STREET", "TWO SIGMA",
-    "RENAISSANCE", "BRIDGEWATER", "POINT72", "SUSQUEHANNA",
-    "DE SHAW", "D.E. SHAW", "TUDOR INVESTMENT", "PERSHING SQUARE",
-    "THIRD POINT", "GREENLIGHT",
+    "CITADEL ADVISORS",
+    "MILLENNIUM MANAGEMENT",
+    "JANE STREET",
+    "TWO SIGMA",
+    "RENAISSANCE",
+    "BRIDGEWATER",
+    "POINT72",
+    "SUSQUEHANNA",
+    "DE SHAW",
+    "D.E. SHAW",
+    "TUDOR INVESTMENT",
+    "PERSHING SQUARE",
+    "THIRD POINT",
+    "GREENLIGHT",
     // Sovereign / pension
-    "GOVERNMENT PENSION", "CALPERS", "CALSTRS", "ONTARIO TEACHERS",
-    "SINGAPORE", "ABU DHABI", "SOFTBANK",
+    "GOVERNMENT PENSION",
+    "CALPERS",
+    "CALSTRS",
+    "ONTARIO TEACHERS",
+    "SINGAPORE",
+    "ABU DHABI",
+    "SOFTBANK",
 ];
 
 /// Number of concurrent info-table HTTP fetches.
@@ -176,11 +223,17 @@ pub async fn fetch_institutional_holders(
 
     // Phase 1: form.idx (major institutions, with directory-listing fallback)
     let mut holders = fetch_from_quarterly_indices(client, &cusip, 2).await;
-    info!("Phase 1 (form.idx): {} institution-quarter entries", holders.len());
+    info!(
+        "Phase 1 (form.idx): {} institution-quarter entries",
+        holders.len()
+    );
 
     // Phase 2: EFTS supplement (smaller/unknown filers, no name filter)
     supplement_with_efts(client, &cusip, min_period, &mut holders).await;
-    info!("After EFTS supplement: {} total institution-quarter entries", holders.len());
+    info!(
+        "After EFTS supplement: {} total institution-quarter entries",
+        holders.len()
+    );
 
     // Dedup by (institution_name, reported_date), then sort newest-first → shares-desc
     holders.sort_by(|a, b| {
@@ -211,9 +264,7 @@ async fn fetch_from_quarterly_indices(
     // Collect entries from all quarters' form.idx files
     let mut all_entries: Vec<(String, String, String, NaiveDate)> = Vec::new();
     for (year, qtr) in &quarters {
-        let url = format!(
-            "https://www.sec.gov/Archives/edgar/full-index/{year}/QTR{qtr}/form.idx"
-        );
+        let url = format!("https://www.sec.gov/Archives/edgar/full-index/{year}/QTR{qtr}/form.idx");
         info!("Downloading form.idx for {year} QTR{qtr}");
         match client.fetch_text(&url).await {
             Ok(text) => {
@@ -243,12 +294,18 @@ async fn fetch_from_quarterly_indices(
             let xml = if is_major {
                 fetch_info_table_xml(&client, &raw_cik, &accn).await.ok()?
             } else {
-                fetch_info_table_xml_basic(&client, &raw_cik, &accn).await.ok()?
+                fetch_info_table_xml_basic(&client, &raw_cik, &accn)
+                    .await
+                    .ok()?
             };
             let holder =
                 parse::find_holding_in_info_table(&xml, &cusip, true, &name, reported_date);
             if holder.is_some() {
-                info!("{name} ({}): {} shares", reported_date, holder.as_ref().unwrap().shares);
+                info!(
+                    "{name} ({}): {} shares",
+                    reported_date,
+                    holder.as_ref().unwrap().shares
+                );
             }
             holder
         });
@@ -537,9 +594,7 @@ async fn fetch_info_table_xml(
 
     // Fallback: fetch the filing's HTML directory index and scan for XML hrefs
     let accn_nodash = accn.replace('-', "");
-    let dir_url = format!(
-        "https://www.sec.gov/Archives/edgar/data/{raw_cik}/{accn_nodash}/"
-    );
+    let dir_url = format!("https://www.sec.gov/Archives/edgar/data/{raw_cik}/{accn_nodash}/");
     let dir_html = client.fetch_text(&dir_url).await?;
 
     // Extract .xml hrefs from the directory listing HTML
@@ -591,12 +646,17 @@ async fn bootstrap_cusip_from_13f(
     company_name: &str,
 ) -> anyhow::Result<String> {
     for page in 0..3usize {
-        let efts = client.search_efts_13f_paged(company_name, page * 100, 100).await?;
+        let efts = client
+            .search_efts_13f_paged(company_name, page * 100, 100)
+            .await?;
         let hits = efts["hits"]["hits"].as_array().cloned().unwrap_or_default();
         if hits.is_empty() {
             break;
         }
-        info!("Bootstrap page {page}: {} EFTS hits for '{company_name}'", hits.len());
+        info!(
+            "Bootstrap page {page}: {} EFTS hits for '{company_name}'",
+            hits.len()
+        );
 
         for hit in &hits {
             let adsh = hit["_source"]["adsh"].as_str().unwrap_or("").to_string();
@@ -716,7 +776,10 @@ async fn resolve_cusip(
             .and_then(|v| v.as_str())
             .map(|s| s.trim_start_matches('0'))
             .unwrap_or(raw_cik);
-        let xml = match client.fetch_filing_text(filer_cik, adsh, xml_filename).await {
+        let xml = match client
+            .fetch_filing_text(filer_cik, adsh, xml_filename)
+            .await
+        {
             Ok(x) => x,
             Err(_) => continue,
         };

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use chrome_driver::{Browser, Page, Sleepable};
+use chrome_driver::{Browser, Page};
 use model::{StockFundamentals, Ticker};
 use scraper::{FinancialScraper, SentimentScraper, TV_HOME};
 use tracing::info;
@@ -34,12 +34,19 @@ impl FundamentalsFetcher {
         let sentiment = self.sentiment_scraper.scrape(ticker).await?;
         let financials = self.financial_scraper.fetch_financials(ticker).await?;
 
-        let documents = edgar::fetch_documents(&ticker.ticker).await.unwrap_or_else(|e| {
-            tracing::warn!("EDGAR documents unavailable for {ticker}: {e:#}");
-            vec![]
-        });
-        let insider_transaction =
-            edgar::fetch_insider_transactions(&ticker.ticker).await.unwrap_or_else(|e| {
+        let documents = self
+            .edgar
+            .fetch_documents(&ticker.ticker)
+            .await
+            .unwrap_or_else(|e| {
+                tracing::warn!("EDGAR documents unavailable for {ticker}: {e:#}");
+                vec![]
+            });
+        let insider_transaction = self
+            .edgar
+            .fetch_insider_transactions(&ticker.ticker)
+            .await
+            .unwrap_or_else(|e| {
                 tracing::warn!("EDGAR insider transactions unavailable for {ticker}: {e:#}");
                 vec![]
             });

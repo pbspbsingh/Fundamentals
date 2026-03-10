@@ -16,7 +16,9 @@ pub struct EdgarClient {
 
 impl Clone for EdgarClient {
     fn clone(&self) -> Self {
-        EdgarClient { http: self.http.clone() }
+        EdgarClient {
+            http: self.http.clone(),
+        }
     }
 }
 
@@ -151,10 +153,9 @@ impl EdgarClient {
         days_back: u32,
         size: usize,
     ) -> anyhow::Result<serde_json::Value> {
-        let startdt = (chrono::Utc::now().date_naive()
-            - chrono::Duration::days(days_back as i64))
-        .format("%Y-%m-%d")
-        .to_string();
+        let startdt = (chrono::Utc::now().date_naive() - chrono::Duration::days(days_back as i64))
+            .format("%Y-%m-%d")
+            .to_string();
         let q = query.replace(' ', "%20");
         let url = format!(
             "https://efts.sec.gov/LATEST/search-index?q=%22{q}%22&forms=13F-HR\

@@ -2,12 +2,12 @@ pub mod edgar;
 pub mod financials;
 pub mod sentiment;
 
-use std::fmt::{Display, Formatter};
-use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-use crate::edgar::{Document, InsiderTransaction, InstitutionalHolder};
+use crate::edgar::{Document, InsiderTransaction};
 use crate::financials::TradingViewFinancials;
 use crate::sentiment::StockSentiment;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Ticker {
