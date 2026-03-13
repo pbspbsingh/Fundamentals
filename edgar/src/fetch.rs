@@ -75,7 +75,6 @@ pub async fn fetch_documents(client: &EdgarClient, ticker: &str) -> anyhow::Resu
             filed_at,
             description,
             is_earnings_release: press_release.is_some() || cfo_commentary.is_some(),
-            cover_page: Some(cover_page),
             press_release,
             cfo_commentary,
         });

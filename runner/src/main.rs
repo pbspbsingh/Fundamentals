@@ -1,6 +1,7 @@
 use model::Ticker;
 use runner::fundamentals_fetcher::FundamentalsFetcher;
 use time::macros::format_description;
+use tracing::info;
 use tracing_subscriber::EnvFilter;
 use tracing_subscriber::fmt::time::OffsetTime;
 
@@ -23,9 +24,14 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
+    let mut args = std::env::args();
+    let (Some(exchange), Some(stock)) = (args.nth(1), args.next()) else {
+        anyhow::bail!("Requires {{exchange}} {{stock}}");
+    };
+    info!("Scraping fundamentals of {exchange}:{stock}");
     let fetcher = FundamentalsFetcher::new().await?;
     let fundamentals = fetcher
-        .fetch_fundamentals(&Ticker::new("NYSE", "TE"))
+        .fetch_fundamentals(&Ticker::new(exchange, stock))
         .await?;
     tokio::fs::write(
         "fundamentals.json",

@@ -11,8 +11,6 @@ pub struct Document {
     pub description: String,
     /// True if this 8-K contains earnings results (has Exhibit 99.1 / 99.2)
     pub is_earnings_release: bool,
-    /// Markdown of the 8-K cover page
-    pub cover_page: Option<String>,
     /// Exhibit 99.1 — press release content as Markdown
     pub press_release: Option<String>,
     /// Exhibit 99.2 — CFO commentary content as Markdown
