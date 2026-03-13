@@ -7,7 +7,7 @@ DEEPSEEK_URL = "https://api.deepseek.com"
 MODEL = "deepseek-reasoner"
 TIMEOUT = 600
 
-system_prompt = open("prompt.md").read()
+system_prompt = open("prompt-vcp.md").read()
 fundamentals = open("fundamentals.json").read()
 
 # Token estimate sanity check
@@ -19,7 +19,7 @@ print(f"[info] estimated tokens: ~{estimated_tokens:,}", flush=True)
 
 print(f"[info] sending request to {DEEPSEEK_URL} ...\n", flush=True)
 
-api_key = "<< Your API KEY here >>"
+api_key = "<< Your API Key >>"
 
 payload = json.dumps({
     "model": MODEL,

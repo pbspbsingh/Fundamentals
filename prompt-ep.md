@@ -71,4 +71,4 @@ Read the press_release for any of the following: share buyback authorization, de
 ## OUTPUT
 Respond with valid JSON only. No preamble. No markdown. No code fences. No trailing text.
 
-{"ep_conviction_score": <integer>, "justification": "<100 words max: list each criterion, points awarded, and one-line reason>"}
+{"ep_conviction_score": <integer>, "justification": [<one string per criterion, max 20 words each>]}
