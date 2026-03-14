@@ -5,6 +5,7 @@ mod utils;
 use crate::TV_HOME;
 use anyhow::Context;
 use chrome_driver::{Page, Sleepable};
+use model::FetchConfig;
 use model::Ticker;
 use model::financials::TradingViewFinancials;
 use std::sync::Arc;
@@ -19,7 +20,42 @@ impl FinancialScraper {
         Self { page }
     }
 
+    /// Fetch all financial sections (legacy: used by standalone CLI runner).
     pub async fn fetch_financials(&self, ticker: &Ticker) -> anyhow::Result<TradingViewFinancials> {
+        self.fetch_financials_with_config(ticker, &FetchConfig::default()).await
+    }
+
+    /// Fetch only the sections specified in `config`.
+    pub async fn fetch_financials_with_config(
+        &self,
+        ticker: &Ticker,
+        config: &FetchConfig,
+    ) -> anyhow::Result<TradingViewFinancials> {
+        let needs_page = config.income_statement
+            || config.balance_sheet
+            || config.cash_flow
+            || config.statistics
+            || config.earnings;
+
+        if !needs_page {
+            // Nothing to scrape from TradingView financials page.
+            return Ok(TradingViewFinancials {
+                currency: String::new(),
+                quarterly_income: vec![],
+                annual_income: vec![],
+                quarterly_balance_sheet: vec![],
+                annual_balance_sheet: vec![],
+                quarterly_cash_flow: vec![],
+                annual_cash_flow: vec![],
+                ttm_income: None,
+                ttm_cash_flow: None,
+                quarterly_statistics: vec![],
+                annual_statistics: vec![],
+                quarterly_earnings: vec![],
+                annual_earnings: vec![],
+            });
+        }
+
         info!("Navigating to financials page of {ticker}...");
         self.page()
             .goto(format!(
@@ -32,100 +68,123 @@ impl FinancialScraper {
             .sleep()
             .await;
 
-        info!("Clicking statements tab...");
-        self.page()
-            .find_element("a#statements")
-            .await?
-            .click()
-            .await?;
-        self.page().sleep().await;
+        let needs_statements =
+            config.income_statement || config.balance_sheet || config.cash_flow || config.statistics;
 
-        let currency = self.currency().await?;
+        let mut currency = String::new();
+        let mut quarterly_income = vec![];
+        let mut annual_income = vec![];
+        let mut ttm_income = None;
+        let mut quarterly_balance_sheet = vec![];
+        let mut annual_balance_sheet = vec![];
+        let mut quarterly_cash_flow = vec![];
+        let mut annual_cash_flow = vec![];
+        let mut ttm_cash_flow = None;
+        let mut quarterly_statistics = vec![];
+        let mut annual_statistics = vec![];
+        let mut quarterly_earnings = vec![];
+        let mut annual_earnings = vec![];
 
-        info!("\nFetching income Statements...");
-        self.switch_tab(true).await?;
-        let quarterly_income = self.parse_income_statement(true).await?;
-        self.switch_tab(false).await?;
-        let annual_income = self.parse_income_statement(false).await?;
-        let ttm_income = self.parse_ttm_income().await.map_or_else(
-            |e| {
-                tracing::warn!("TTM income unavailable: {e:#}");
-                None
-            },
-            Some,
-        );
+        if needs_statements {
+            info!("Clicking statements tab...");
+            self.page()
+                .find_element("a#statements")
+                .await?
+                .click()
+                .await?;
+            self.page().sleep().await;
 
-        info!("\nFetching Balance Sheet...");
-        self.page()
-            .find_element("a[id='balance sheet']")
-            .await?
-            .click()
-            .await?;
-        self.page().sleep().await;
-        self.switch_tab(true).await?;
-        let quarterly_balance_sheet = self.parse_balance_sheet(true).await?;
-        self.switch_tab(false).await?;
-        let annual_balance_sheet = self.parse_balance_sheet(false).await?;
+            currency = self.currency().await?;
 
-        info!("\nFetching Cash Flow...");
-        self.page()
-            .find_element("a[id='cash flow']")
-            .await?
-            .click()
-            .await?;
-        self.page().sleep().await;
-        self.switch_tab(true).await?;
-        let quarterly_cash_flow = self.parse_cash_flow(true).await?;
-        self.switch_tab(false).await?;
-        let annual_cash_flow = self.parse_cash_flow(false).await?;
-        let ttm_cash_flow = self.parse_ttm_cash_flow().await.map_or_else(
-            |e| {
-                tracing::warn!("TTM cash flow unavailable: {e:#}");
-                None
-            },
-            Some,
-        );
+            if config.income_statement {
+                info!("\nFetching Income Statements...");
+                self.switch_tab(true).await?;
+                quarterly_income = self.parse_income_statement(true).await?;
+                self.switch_tab(false).await?;
+                annual_income = self.parse_income_statement(false).await?;
+                ttm_income = self.parse_ttm_income().await.map_or_else(
+                    |e| {
+                        tracing::warn!("TTM income unavailable: {e:#}");
+                        None
+                    },
+                    Some,
+                );
+            }
 
-        info!("\nFetching Statistics...");
-        self.page()
-            .find_element("a#statistics")
-            .await?
-            .click()
-            .await?;
-        self.page().sleep().await;
-        self.switch_tab(true).await?;
-        let quarterly_statistics = self.parse_statistics(true).await?;
-        self.switch_tab(false).await?;
-        let annual_statistics = self.parse_statistics(false).await?;
+            if config.balance_sheet {
+                info!("\nFetching Balance Sheet...");
+                self.page()
+                    .find_element("a[id='balance sheet']")
+                    .await?
+                    .click()
+                    .await?;
+                self.page().sleep().await;
+                self.switch_tab(true).await?;
+                quarterly_balance_sheet = self.parse_balance_sheet(true).await?;
+                self.switch_tab(false).await?;
+                annual_balance_sheet = self.parse_balance_sheet(false).await?;
+            }
 
-        info!("\nFetching Earnings...");
-        self.page()
-            .find_element("a#earnings")
-            .await?
-            .click()
-            .await?;
-        self.page().sleep().await;
-        let quarterly_earnings = self.parse_earnings(true).await?;
-        let annual_earnings = self.parse_earnings(false).await?;
+            if config.cash_flow {
+                info!("\nFetching Cash Flow...");
+                self.page()
+                    .find_element("a[id='cash flow']")
+                    .await?
+                    .click()
+                    .await?;
+                self.page().sleep().await;
+                self.switch_tab(true).await?;
+                quarterly_cash_flow = self.parse_cash_flow(true).await?;
+                self.switch_tab(false).await?;
+                annual_cash_flow = self.parse_cash_flow(false).await?;
+                ttm_cash_flow = self.parse_ttm_cash_flow().await.map_or_else(
+                    |e| {
+                        tracing::warn!("TTM cash flow unavailable: {e:#}");
+                        None
+                    },
+                    Some,
+                );
+            }
+
+            if config.statistics {
+                info!("\nFetching Statistics...");
+                self.page()
+                    .find_element("a#statistics")
+                    .await?
+                    .click()
+                    .await?;
+                self.page().sleep().await;
+                self.switch_tab(true).await?;
+                quarterly_statistics = self.parse_statistics(true).await?;
+                self.switch_tab(false).await?;
+                annual_statistics = self.parse_statistics(false).await?;
+            }
+        }
+
+        if config.earnings {
+            info!("\nFetching Earnings...");
+            self.page()
+                .find_element("a#earnings")
+                .await?
+                .click()
+                .await?;
+            self.page().sleep().await;
+            quarterly_earnings = self.parse_earnings(true).await?;
+            annual_earnings = self.parse_earnings(false).await?;
+        }
 
         Ok(TradingViewFinancials {
             currency,
-
             quarterly_income,
             annual_income,
-
             quarterly_balance_sheet,
             annual_balance_sheet,
-
             quarterly_cash_flow,
             annual_cash_flow,
-
             ttm_income,
             ttm_cash_flow,
-
             quarterly_statistics,
             annual_statistics,
-
             quarterly_earnings,
             annual_earnings,
         })
